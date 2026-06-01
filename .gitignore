@@ -1,0 +1,30 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+token.json
+
+# n8n runtime data (contains the encrypted credential store)
+n8n_data/
+.n8n/
+
+# Postgres volume
+pgdata/
+
+# Workflow exports staged before review
+workflows/_export/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Logs and scratch
+*.log
+scratch/
+tmp/
