@@ -1,0 +1,77 @@
+# PlacementPilot — one supported runtime, never a dependency.
+#
+# Portability (N1): the workflows assume nothing about this file. Postgres is
+# reached via a connection string in an n8n credential, so Neon, Supabase or an
+# existing Postgres work identically. n8n Cloud works too — in that case you
+# only need the database half of this file, or a hosted one.
+#
+#   cp .env.example .env    # fill it in first
+#   docker compose up -d
+#   docker compose exec -T postgres psql -U placementpilot -d placementpilot < db/schema.sql
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Exposed only so you can run psql from the host. Remove to keep it internal.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- n8n's own storage: same Postgres, separate schema ---
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POSTGRESDB_SCHEMA: n8n
+
+      # --- credential encryption. Losing this loses every stored credential. ---
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+
+      # --- public URL, needed by the Discord Interactions webhook (Phase 5) ---
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+
+      GENERIC_TIMEZONE: ${TZ:-Asia/Kolkata}
+      TZ: ${TZ:-Asia/Kolkata}
+
+      # Where WF-L0 fetches config from. Any HTTPS URL works — repo raw, a Gist,
+      # anything. Change this to point at your own fork.
+      PP_CONFIG_BASE_URL: ${PP_CONFIG_BASE_URL}
+
+      # Deliberately NOT set: NODE_FUNCTION_ALLOW_EXTERNAL / _ALLOW_BUILTIN.
+      # Code nodes must stay import-free so the same workflows run on n8n Cloud.
+      # If you ever feel the need for these, the workflow is doing something a
+      # native node should be doing — see CLAUDE.md "Portability is binding".
+
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+
+volumes:
+  pgdata:
+  n8n_data:
