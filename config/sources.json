@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+
+  "_note": "Every ats entry below was probed and returned HTTP 200 on 2026-08-13. Add a company by adding a row here and pushing — no workflow edit. WF-1d discovery appends further boards to the discovered_sources table, not to this file.",
+
+  "ats": [
+    { "provider": "greenhouse", "token": "postman",    "company": "Postman" },
+    { "provider": "greenhouse", "token": "groww",      "company": "Groww" },
+    { "provider": "greenhouse", "token": "phonepe",    "company": "PhonePe" },
+    { "provider": "greenhouse", "token": "slice",      "company": "Slice" },
+    { "provider": "greenhouse", "token": "turing",     "company": "Turing" },
+    { "provider": "greenhouse", "token": "stripe",     "company": "Stripe" },
+    { "provider": "greenhouse", "token": "databricks", "company": "Databricks" },
+
+    { "provider": "lever",      "token": "plaid",      "company": "Plaid" },
+    { "provider": "lever",      "token": "mistral",    "company": "Mistral AI" },
+
+    { "provider": "ashby",      "token": "linear",     "company": "Linear" },
+    { "provider": "ashby",      "token": "vanta",      "company": "Vanta" },
+    { "provider": "ashby",      "token": "openai",     "company": "OpenAI" },
+    { "provider": "ashby",      "token": "notion",     "company": "Notion" },
+    { "provider": "ashby",      "token": "ramp",       "company": "Ramp" },
+    { "provider": "ashby",      "token": "deel",       "company": "Deel" }
+  ],
+
+  "aggregators": [
+    { "provider": "jsearch",   "enabled": false, "monthly_limit": 200,  "_note": "RapidAPI. Carries LinkedIn, Indeed, Glassdoor, ZipRecruiter, Bayt." },
+    { "provider": "serpapi",   "enabled": false, "monthly_limit": 250,  "_note": "google_jobs engine. Google for Jobs indexes Naukri, LinkedIn, Indeed, Instahyre." },
+    { "provider": "adzuna",    "enabled": false, "monthly_limit": 1000, "_note": "Broad aggregate." },
+    { "provider": "jooble",    "enabled": false, "monthly_limit": 0,    "_note": "Confirm limit at signup, then set it." },
+    { "provider": "careerjet", "enabled": false, "monthly_limit": 0,    "_note": "Confirm limit at signup, then set it." }
+  ],
+
+  "career_pages": [],
+
+  "rss": []
+}
