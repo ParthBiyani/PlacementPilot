@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+
+  "_note": "WF-1d (Phase 4) reads each enabled entry, extracts company names and domains, then probes ATS token patterns for each. Boards that respond are registered in discovered_sources. Adding an accelerator here pulls in its whole portfolio's job boards. Only 'yc' is verified so far; the rest are disabled until their extraction method is confirmed in Phase 4 — enabling an unverified entry will just log a failure, not break the run.",
+
+  "accelerators": [
+    {
+      "id": "yc",
+      "name": "Y Combinator",
+      "enabled": true,
+      "verified": "2026-08-13",
+      "method": "json",
+      "url": "https://yc-oss.github.io/api/companies/all.json",
+      "fields": { "name": "name", "domain": "website", "tags": "industries" },
+      "_note": "~10MB, refreshed daily. Filter to India-located and actively-hiring before probing."
+    },
+    { "id": "techstars",   "name": "Techstars",            "enabled": false, "method": "html", "url": "https://www.techstars.com/portfolio" },
+    { "id": "antler",      "name": "Antler",               "enabled": false, "method": "html", "url": "https://www.antler.co/portfolio" },
+    { "id": "peakxv",      "name": "Peak XV Surge",        "enabled": false, "method": "html", "url": "https://www.peakxv.com/surge/" },
+    { "id": "accel_atoms", "name": "Accel Atoms",          "enabled": false, "method": "html", "url": "https://www.accel.com/atoms" },
+    { "id": "blume",       "name": "Blume Ventures",       "enabled": false, "method": "html", "url": "https://blume.vc/portfolio" },
+    { "id": "100x",        "name": "100X.VC",              "enabled": false, "method": "html", "url": "https://100x.vc/portfolio" },
+    { "id": "ef",          "name": "Entrepreneur First",   "enabled": false, "method": "html", "url": "https://www.joinef.com/companies/" },
+    { "id": "500global",   "name": "500 Global",           "enabled": false, "method": "html", "url": "https://500.co/companies" }
+  ],
+
+  "ats_probe_patterns": [
+    { "provider": "greenhouse",      "url": "https://boards-api.greenhouse.io/v1/boards/{token}/jobs" },
+    { "provider": "lever",           "url": "https://api.lever.co/v0/postings/{token}?mode=json" },
+    { "provider": "ashby",           "url": "https://api.ashbyhq.com/posting-api/job-board/{token}" },
+    { "provider": "workable",        "url": "https://apply.workable.com/api/v1/widget/accounts/{token}" },
+    { "provider": "smartrecruiters", "url": "https://api.smartrecruiters.com/v1/companies/{token}/postings" },
+    { "provider": "recruitee",       "url": "https://{token}.recruitee.com/api/offers/" }
+  ]
+}
