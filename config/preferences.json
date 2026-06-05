@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+
+  "profile": {
+    "name": "TODO",
+    "graduation_year": 2027,
+    "summary": "TODO — 3-5 sentences: who you are, what you build, what you want next. This text is sent to the scorer verbatim, so write it the way you would describe yourself to a recruiter. Changing it re-scores everything automatically.",
+    "skills": [],
+    "projects": []
+  },
+
+  "must_have": {
+    "locations": [
+      "bangalore",
+      "pune",
+      "hyderabad",
+      "gurugram",
+      "delhi ncr",
+      "noida",
+      "mumbai",
+      "chennai"
+    ],
+    "remote_ok": true,
+    "employment_types": ["internship", "full_time", "apprenticeship"],
+    "max_experience_years": 1
+  },
+
+  "exclude": {
+    "role_keywords": [
+      "sales",
+      "marketing",
+      "bpo",
+      "customer support",
+      "human resources",
+      "recruiter",
+      "business development",
+      "telecaller",
+      "field executive"
+    ],
+    "companies": []
+  },
+
+  "notify": {
+    "channel": "discord",
+    "min_score": 75
+  },
+
+  "poll": {
+    "ats_minutes": 60
+  },
+
+  "queries": [
+    "software engineer intern bangalore",
+    "software development engineer intern india",
+    "machine learning intern india",
+    "backend engineer intern remote india",
+    "data engineer intern bangalore",
+    "new grad software engineer india 2027"
+  ]
+}
