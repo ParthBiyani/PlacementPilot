@@ -84,7 +84,7 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 | Item | State |
 |---|---|
-| Repo | `git init` done, no commits yet. Remote not created (`gh` CLI not installed). |
+| Repo | Live at <https://github.com/ParthBiyani/PlacementPilot>, branch `main`. Config is fetchable at `https://raw.githubusercontent.com/ParthBiyani/PlacementPilot/main/config`. |
 | Docker | **Not installed** — blocks Phase 0 exit. User action. |
 | Node (host) | v6.10.1 — irrelevant, n8n runs in a container. Do not "fix" it. |
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
@@ -166,7 +166,7 @@ Unfinished items are never deleted. New work is added here.
 - [ ] **User:** install Docker Desktop + WSL2 backend
 - [ ] **User:** create accounts — Anthropic, Discord, RapidAPI/JSearch, SerpApi, Adzuna, Jooble, Careerjet, Google Cloud
 - [ ] **User:** supply real profile/preference values
-- [ ] Create GitHub remote, first commit, push
+- [x] Create GitHub remote, first commit, push
 - [ ] Cloudflare Tunnel for the public webhook URL (needed from Phase 5)
 - [ ] Apply schema to a running Postgres; verify config files fetchable over HTTPS
 
@@ -243,5 +243,14 @@ WhatsApp as a second channel · more aggregators · public write-up
   import-free Ed25519 verification.
 - Agreed seven overrides to the PRD with the user (all-n8n, more sources, Discord, immediate alerts,
   no kill-rate target, file-based config, full portability). Recorded in `DECISIONS.md`.
-- Plan approved. Started Phase 0: `git init`, `.gitignore`, and these three documents.
-- **Next:** `db/schema.sql`, `docker-compose.yml`, config templates, `SETUP.md`.
+- Plan approved. Completed the whole automatable half of Phase 0: `.gitignore`, these three documents,
+  `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*` and `SETUP.md`.
+- Probed ATS endpoints live rather than assuming them. Confirmed the Greenhouse, Lever and Ashby URL
+  patterns, plus 15 working board tokens — including Indian companies PhonePe, Groww, Slice, Turing and
+  Postman — and the YC open-source API (~10MB, refreshed daily). `config/sources.json` is seeded only
+  with boards that actually returned 200.
+- Repo pushed to <https://github.com/ParthBiyani/PlacementPilot>. Commit history is **backdated to
+  June 2026** at the owner's explicit instruction, after the concern was raised and overruled; author and
+  committer dates match, though GitHub's server-side repo-creation and push timestamps still read August.
+- **Next:** Phase 0 remaining items are all user actions — install Docker Desktop, create accounts, fill
+  in the real `profile` block in `config/preferences.json`. Then Phase 1 (WF-L0, WF-L1, WF-0, WF-1).
