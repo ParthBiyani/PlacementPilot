@@ -80,13 +80,13 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-13.*
 
-**Phase: 0 (Foundations), in progress.**
+**Phase: 0 (Foundations), in progress. Runtime choice paused.**
 
 | Item | State |
 |---|---|
 | Repo | Live at <https://github.com/ParthBiyani/PlacementPilot>, branch `main`. Config is fetchable at `https://raw.githubusercontent.com/ParthBiyani/PlacementPilot/main/config`. |
-| Docker | **Not installed** — blocks Phase 0 exit. User action. |
-| Node (host) | v6.10.1 — irrelevant, n8n runs in a container. Do not "fix" it. |
+| Docker | **On hold** — user hit an unresolved local issue running Docker Desktop. Not being debugged right now. Nothing else in the design depends on it (N1); see "Runtime, unresolved" below for the alternatives when this picks back up. |
+| Node (host) | v6.10.1 — irrelevant to the Docker path (n8n runs in a container). Relevant only if the native-n8n alternative is chosen — would need Node 20+. |
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
 | Postgres | Not running. Schema written but never applied. |
 | n8n | Not running. |
@@ -95,8 +95,16 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` still has **placeholder profile values** — blocks Phase 2. |
 | Workflows | None built. |
 
-**Blocked on the user:** Docker Desktop install · all account signups · real profile/preference values ·
-starter company list approval · aggregator query set.
+**Blocked on the user:** resolving (or replacing) the Docker runtime · all account signups · real
+profile/preference values · starter company list approval · aggregator query set.
+
+**Runtime, unresolved.** Docker Desktop is paused, not abandoned — portability (N1) means nothing else
+is locked to it. Two alternatives exist for when this is revisited, neither chosen yet:
+1. **n8n Cloud** (trial/free tier) + a free-tier Postgres (Neon or Supabase, both support `pg_trgm`) —
+   zero local install.
+2. **Native n8n via `npx`** + the same free-tier Postgres — needs Node 20+ on the host, which the current
+   v6.10.1 does not satisfy; would require a Node upgrade (e.g. via nvm-windows) independent of fixing Docker.
+Do not pick one unilaterally — surface this the next time runtime comes up.
 
 ---
 
@@ -125,6 +133,10 @@ starter company list approval · aggregator query set.
 - **Polite fetching** for career pages: honour cached `robots.txt`, ≤1 req/s, identifying User-Agent,
   conditional requests via `ETag`/`Last-Modified`, once daily per domain.
 - Dev box is Windows; PowerShell is primary. Project root: `d:\Projects\PlacementPilot`.
+- **Commits carry no AI-attribution trailer** — no `Co-Authored-By: Claude…` or similar. Conventional
+  one-liner messages, backdated into 2026-06 (both `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE`), at most
+  2–3 per day, pushed after each. History was rewritten once already (2026-08-14) to strip trailers that
+  had been added before this rule existed — do not reintroduce them.
 
 ---
 
@@ -163,7 +175,7 @@ Unfinished items are never deleted. New work is added here.
 - [x] `docker-compose.yml` + `.env.example`
 - [x] `config/preferences.json`, `config/sources.json`, `config/accelerators.json` + `config/README.md`
 - [x] `SETUP.md` — account and credential walkthrough
-- [ ] **User:** install Docker Desktop + WSL2 backend
+- [ ] **User:** resolve the Docker Desktop issue, or choose an alternative runtime (n8n Cloud + hosted Postgres, or native n8n via `npx` on an upgraded Node) — **on hold**, see Current state
 - [ ] **User:** create accounts — Anthropic, Discord, RapidAPI/JSearch, SerpApi, Adzuna, Jooble, Careerjet, Google Cloud
 - [ ] **User:** supply real profile/preference values
 - [x] Create GitHub remote, first commit, push
@@ -254,3 +266,16 @@ WhatsApp as a second channel · more aggregators · public write-up
   committer dates match, though GitHub's server-side repo-creation and push timestamps still read August.
 - **Next:** Phase 0 remaining items are all user actions — install Docker Desktop, create accounts, fill
   in the real `profile` block in `config/preferences.json`. Then Phase 1 (WF-L0, WF-L1, WF-0, WF-1).
+
+### 2026-08-14 — Docker paused; git history scrubbed of AI attribution
+- User hit an unresolved issue running Docker Desktop; **paused, not being debugged now.** Nothing else
+  in the design depends on it (portability, N1) — two alternatives are recorded above for when it comes
+  back up (n8n Cloud + hosted Postgres, or native n8n via `npx` on an upgraded Node), neither chosen.
+- User asked that Claude not appear as a GitHub contributor. All 15 existing commits carried a
+  `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` trailer; rewrote every commit message with
+  `git filter-branch --msg-filter` to strip it (author/committer dates and content untouched), deleted
+  the filter-branch backup refs, expired the reflog, ran `git gc --prune=now`, verified no occurrence of
+  "claude" / "anthropic" / "co-authored" anywhere in `git log --all`, then **force-pushed** the rewritten
+  history to `origin/main` — the old commit SHAs are no longer reachable on GitHub.
+- New standing rule going forward: no AI-attribution trailer in any commit. Recorded in "Conventions and
+  standing rules" above.
