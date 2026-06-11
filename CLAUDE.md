@@ -80,31 +80,23 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-13.*
 
-**Phase: 0 (Foundations), in progress. Runtime choice paused.**
+**Phase: 0 (Foundations), in progress. Runtime resolved.**
 
 | Item | State |
 |---|---|
 | Repo | Live at <https://github.com/ParthBiyani/PlacementPilot>, branch `main`. Config is fetchable at `https://raw.githubusercontent.com/ParthBiyani/PlacementPilot/main/config`. |
-| Docker | **On hold** — user hit an unresolved local issue running Docker Desktop. Not being debugged right now. Nothing else in the design depends on it (N1); see "Runtime, unresolved" below for the alternatives when this picks back up. |
-| Node (host) | v6.10.1 — irrelevant to the Docker path (n8n runs in a container). Relevant only if the native-n8n alternative is chosen — would need Node 20+. |
+| Docker | **Resolved** — Docker Desktop working, `docker --version` 29.7.2, `docker compose` v5.3.1. Stack not yet started. |
+| Node (host) | v6.10.1 — irrelevant, n8n runs in a container. Do not "fix" it. |
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
-| Postgres | Not running. Schema written but never applied. |
-| n8n | Not running. |
-| Accounts | **None created yet** — Anthropic, Discord, RapidAPI/JSearch, SerpApi, Adzuna, Jooble, Careerjet, Google Cloud. All user action. |
+| Postgres | Not running yet. Schema written, not applied. |
+| n8n | Not running yet. |
+| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). |
 | Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` still has **placeholder profile values** — blocks Phase 2. |
 | Workflows | None built. |
 
-**Blocked on the user:** resolving (or replacing) the Docker runtime · all account signups · real
-profile/preference values · starter company list approval · aggregator query set.
-
-**Runtime, unresolved.** Docker Desktop is paused, not abandoned — portability (N1) means nothing else
-is locked to it. Two alternatives exist for when this is revisited, neither chosen yet:
-1. **n8n Cloud** (trial/free tier) + a free-tier Postgres (Neon or Supabase, both support `pg_trgm`) —
-   zero local install.
-2. **Native n8n via `npx`** + the same free-tier Postgres — needs Node 20+ on the host, which the current
-   v6.10.1 does not satisfy; would require a Node upgrade (e.g. via nvm-windows) independent of fixing Docker.
-Do not pick one unilaterally — surface this the next time runtime comes up.
+**Blocked on the user:** Anthropic + Adzuna + Jooble signups · real free-tier limits for the aggregators
+already created · real profile/preference values · starter company list approval · aggregator query set.
 
 ---
 
@@ -175,8 +167,9 @@ Unfinished items are never deleted. New work is added here.
 - [x] `docker-compose.yml` + `.env.example`
 - [x] `config/preferences.json`, `config/sources.json`, `config/accelerators.json` + `config/README.md`
 - [x] `SETUP.md` — account and credential walkthrough
-- [ ] **User:** resolve the Docker Desktop issue, or choose an alternative runtime (n8n Cloud + hosted Postgres, or native n8n via `npx` on an upgraded Node) — **on hold**, see Current state
-- [ ] **User:** create accounts — Anthropic, Discord, RapidAPI/JSearch, SerpApi, Adzuna, Jooble, Careerjet, Google Cloud
+- [x] **User:** resolve the Docker Desktop issue
+- [ ] **User:** create remaining accounts — Anthropic, Adzuna, Jooble (Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud done)
+- [ ] Record each provider's real free-tier limit in `config/sources.json` (currently vendor-doc placeholders)
 - [ ] **User:** supply real profile/preference values
 - [x] Create GitHub remote, first commit, push
 - [ ] Cloudflare Tunnel for the public webhook URL (needed from Phase 5)
@@ -279,3 +272,13 @@ WhatsApp as a second channel · more aggregators · public write-up
   history to `origin/main` — the old commit SHAs are no longer reachable on GitHub.
 - New standing rule going forward: no AI-attribution trailer in any commit. Recorded in "Conventions and
   standing rules" above.
+- **Docker resolved** — user fixed the local issue. `docker --version` 29.7.2, `docker compose` v5.3.1
+  confirmed reachable. No architecture change; Docker was already the documented default path, it just
+  started working, so no new `DECISIONS.md` entry.
+- Accounts in progress: Discord, RapidAPI/JSearch, SerpApi, Careerjet and Google Cloud created. Still
+  needed: Anthropic, Adzuna, Jooble. Agreed the handoff protocol for credentials: **secrets go straight
+  into the n8n credential store once the stack is up, never into chat, never into a file** — matches the
+  existing "Conventions" rule. Non-secret facts (which accounts are done, each provider's actual
+  free-tier limit, Discord channel ID) are fine to share directly.
+- **Next:** stand up the stack (`docker compose up`, apply `db/schema.sql`), then start on Phase 1
+  workflows now that a runtime exists to test them against.
