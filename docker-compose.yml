@@ -24,9 +24,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # Exposed only so you can run psql from the host. Remove to keep it internal.
+    # Exposed only so you can run psql (or a GUI client) from the host. Mapped to
+    # 5433, not 5432 — a native Postgres service was already bound to 5432 on
+    # this machine. n8n talks to this container over the internal Docker
+    # network regardless, so this mapping doesn't affect n8n<->Postgres at all.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
 
   n8n:
     image: n8nio/n8n:latest

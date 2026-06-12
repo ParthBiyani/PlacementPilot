@@ -85,11 +85,11 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Item | State |
 |---|---|
 | Repo | Live at <https://github.com/ParthBiyani/PlacementPilot>, branch `main`. Config is fetchable at `https://raw.githubusercontent.com/ParthBiyani/PlacementPilot/main/config`. |
-| Docker | **Resolved** — Docker Desktop working, `docker --version` 29.7.2, `docker compose` v5.3.1. Stack not yet started. |
+| Docker | **Resolved** — Docker Desktop working, `docker --version` 29.7.2, `docker compose` v5.3.1. |
 | Node (host) | v6.10.1 — irrelevant, n8n runs in a container. Do not "fix" it. |
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
-| Postgres | Not running yet. Schema written, not applied. |
-| n8n | Not running yet. |
+| Postgres | **Running.** `placementpilot-postgres-1`, healthy, schema applied — 14 tables confirmed. Host port **5433**, not 5432 (a native Postgres Windows service already held 5432 — see `docker-compose.yml` comment). |
+| n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. No owner account created yet — first login still needed. |
 | Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). |
 | Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` still has **placeholder profile values** — blocks Phase 2. |
@@ -173,7 +173,9 @@ Unfinished items are never deleted. New work is added here.
 - [ ] **User:** supply real profile/preference values
 - [x] Create GitHub remote, first commit, push
 - [ ] Cloudflare Tunnel for the public webhook URL (needed from Phase 5)
-- [ ] Apply schema to a running Postgres; verify config files fetchable over HTTPS
+- [x] Apply schema to a running Postgres; verify config files fetchable over HTTPS
+- [ ] **User:** open <http://localhost:5678> and create the n8n owner account (first login)
+- [ ] Enter credentials into the n8n credential store as accounts finish (Anthropic, Discord, RapidAPI, SerpApi, Careerjet, Google)
 
 ### Phase 1 — Config layer + ATS collection
 - [ ] WF-L0 lib-config — fetch, validate, cache with ETag, fallback + alarm

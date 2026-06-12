@@ -6,6 +6,7 @@
 *.key
 credentials.json
 token.json
+client_secret*.json
 
 # n8n runtime data (contains the encrypted credential store)
 n8n_data/
