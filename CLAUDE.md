@@ -90,13 +90,13 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
 | Postgres | **Running.** `placementpilot-postgres-1`, healthy, schema applied — 14 tables confirmed. Host port **5433**, not 5432 (a native Postgres Windows service already held 5432 — see `docker-compose.yml` comment). |
 | n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. No owner account created yet — first login still needed. |
-| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). |
+| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord + SerpApi entered so far. |
 | Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
-| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` still has **placeholder profile values** — blocks Phase 2. |
+| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` now has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. |
 | Workflows | None built. |
 
 **Blocked on the user:** Anthropic + Adzuna + Jooble signups · real free-tier limits for the aggregators
-already created · real profile/preference values · starter company list approval · aggregator query set.
+already created · entering remaining credentials into the n8n store · starter company list approval.
 
 ---
 
@@ -174,8 +174,9 @@ Unfinished items are never deleted. New work is added here.
 - [x] Create GitHub remote, first commit, push
 - [ ] Cloudflare Tunnel for the public webhook URL (needed from Phase 5)
 - [x] Apply schema to a running Postgres; verify config files fetchable over HTTPS
-- [ ] **User:** open <http://localhost:5678> and create the n8n owner account (first login)
-- [ ] Enter credentials into the n8n credential store as accounts finish (Anthropic, Discord, RapidAPI, SerpApi, Careerjet, Google)
+- [x] **User:** open <http://localhost:5678> and create the n8n owner account (first login)
+- [ ] Enter credentials into the n8n credential store as accounts finish — Discord + SerpApi done; still need Anthropic, RapidAPI, Careerjet, Google
+- [x] Real profile in `config/preferences.json` — derived from `Resumes/` (SDE, AI/ML, Data resumes), skills/projects merged, queries broadened to cover all three tracks
 
 ### Phase 1 — Config layer + ATS collection
 - [ ] WF-L0 lib-config — fetch, validate, cache with ETag, fallback + alarm
@@ -282,5 +283,26 @@ WhatsApp as a second channel · more aggregators · public write-up
   into the n8n credential store once the stack is up, never into chat, never into a file** — matches the
   existing "Conventions" rule. Non-secret facts (which accounts are done, each provider's actual
   free-tier limit, Discord channel ID) are fine to share directly.
-- **Next:** stand up the stack (`docker compose up`, apply `db/schema.sql`), then start on Phase 1
-  workflows now that a runtime exists to test them against.
+- **Stack stood up:** `docker compose up` — Postgres healthy on host port **5433** (5432 was taken by a
+  native Postgres Windows service, remapped in `docker-compose.yml`; internal n8n↔Postgres traffic is
+  unaffected since it goes over the Docker network). Schema applied, all 14 tables confirmed. n8n 2.34.6
+  healthy at localhost:5678. User created the n8n owner account and entered Discord + SerpApi credentials.
+- Found an untracked Google OAuth `client_secret_*.json` sitting in the repo root — flagged to the user,
+  added `client_secret*.json` to `.gitignore` as a safety net, left the file untouched (never committed).
+- Diagnosed a Gmail OAuth `403: Access Denied` from the user's description of the error plus the exact
+  heading: the app is in Google's "Testing" publishing status requesting a restricted scope
+  (`https://mail.google.com/`), and the user's own account wasn't yet on the OAuth consent screen's
+  **Test users** list. Fix given: add the account there — no need to publish to Production, which would
+  trigger Google's verification review for restricted scopes.
+- **Built the real profile.** User pointed to `d:\Projects\PlacementPilot\Resumes\` — three role-targeted
+  resumes (SDE, AI/ML, Data) not previously known to exist. Read all three, merged skills/projects into
+  `config/preferences.json`, deliberately excluding the "PlacementPilot" project bullet each resume lists
+  (self-referential — the tool describing itself as a completed project would be circular and is not yet
+  true) and excluding contact details (phone/email) from the profile even though they're on the résumés.
+  Broadened `queries` — the existing set skewed SDE/ML and had no data/BI or GenAI-specific term despite
+  the Data and AI/ML resumes existing, so added `"generative ai intern india"` and
+  `"data analyst intern india"`.
+  Added `Resumes/` to `.gitignore` — the source PDFs carry phone/email, more sensitive than the derived
+  profile text, and the project's own rule is no personal data outside `config/` and the credential store.
+- **Next:** remaining accounts (Anthropic, Adzuna, Jooble) and their credentials in the n8n store, then
+  Phase 1 workflows (WF-L0, WF-L1, WF-0, WF-1) against the now-live instance.

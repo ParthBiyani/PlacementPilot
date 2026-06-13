@@ -8,6 +8,11 @@ credentials.json
 token.json
 client_secret*.json
 
+# Personal documents — the profile derived from these lives in config/
+# preferences.json (public-safe by design); the source PDFs themselves
+# (with phone/email) never should.
+Resumes/
+
 # n8n runtime data (contains the encrypted credential store)
 n8n_data/
 .n8n/

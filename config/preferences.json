@@ -2,11 +2,27 @@
   "schema_version": 1,
 
   "profile": {
-    "name": "TODO",
+    "name": "Parth Biyani",
     "graduation_year": 2027,
-    "summary": "TODO — 3-5 sentences: who you are, what you build, what you want next. This text is sent to the scorer verbatim, so write it the way you would describe yourself to a recruiter. Changing it re-scores everything automatically.",
-    "skills": [],
-    "projects": []
+    "summary": "Computer Engineering undergraduate at Thapar Institute of Engineering & Technology (2023–2027) with hands-on experience across three tracks: backend/software engineering (FastAPI, Node.js, PostgreSQL, REST APIs, JWT/RBAC, microservices), applied ML and agentic AI (PyTorch, TensorFlow, LangChain/LangGraph, RAG, vector search with Qdrant, LLM evaluation), and data analytics/BI (Power BI, DAX, ETL pipelines, SQL, statistical modeling). Shipped freelance work in production use — a Flutter/MongoDB academy platform serving 100+ students and an inventory system processing 10,000+ stock entries/day — plus independent projects spanning agentic RAG systems, a speech-to-text/TTS research copilot, and neural network compression research. Co-authored a paper accepted at IEEE ICSIT 2026 and led a 7-member team to a top-3 global finish at the VFS Student Design Challenge sponsored by Airbus. Looking for software engineering, ML/AI, or data engineering/analytics internships and full-time roles at product-focused tech companies, ideally working close to the backend/ML boundary.",
+    "skills": [
+      "Python", "C++", "C", "JavaScript", "Dart", "SQL", "R",
+      "FastAPI", "Node.js", "Express.js", "REST APIs", "JWT Authentication", "RBAC", "Microservices",
+      "PostgreSQL", "MongoDB", "Firebase", "Qdrant", "Redis", "MySQL",
+      "Flutter", "React", "HTML", "CSS",
+      "Git", "GitHub Actions", "Docker", "Linux", "Postman", "AWS EC2",
+      "PyTorch", "TensorFlow", "OpenCV", "Scikit-Learn", "Pandas", "NumPy", "Model Optimization", "ONNX",
+      "LangChain", "LangGraph", "RAG", "MCP", "Tool Calling", "Agent Memory", "Prompt Engineering", "LLM Evaluation", "Whisper", "Hugging Face",
+      "Power BI", "DAX", "Power Query", "ETL", "Data Modeling", "Advanced Excel", "Star Schema Modeling", "KPI Design",
+      "Regression", "Classification", "Feature Engineering", "Hypothesis Testing", "Statistical Modeling"
+    ],
+    "projects": [
+      "ProjectMind — agentic memory platform indexing 100+ project artifacts into a hybrid semantic + keyword search layer (LangGraph, RAG, Qdrant, FastAPI)",
+      "VoiceBrief — multilingual (Hindi/English) knowledge-to-speech copilot converting research papers into short audio briefs (LangGraph, Whisper, TTS, Qdrant)",
+      "Self-Pruning Neural Network — CNN with learnable gate parameters for training-time pruning; compressed 70% of weights within 0.3% of baseline CIFAR-10 accuracy (PyTorch, model compression)",
+      "CivicPulse — crowdsourced grievance redressal app with RBAC auth and a state-machine complaint lifecycle (Flutter, FastAPI, Node.js, OpenCV)",
+      "Data Jobs Market Dashboard — Power BI dashboard over a global job-market dataset with DAX measures, drill-through and geospatial salary/skill-demand analysis (Power BI, Power Query, DAX, ETL)"
+    ]
   },
 
   "must_have": {
@@ -51,9 +67,10 @@
 
   "queries": [
     "software engineer intern bangalore",
-    "software development engineer intern india",
-    "machine learning intern india",
     "backend engineer intern remote india",
+    "machine learning intern india",
+    "generative ai intern india",
+    "data analyst intern india",
     "data engineer intern bangalore",
     "new grad software engineer india 2027"
   ]
