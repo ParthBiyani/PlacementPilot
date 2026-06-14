@@ -1,0 +1,131 @@
+{
+  "id": "773d1f4a0f6b4bf7",
+  "name": "WF-L1 lib-normalize",
+  "nodes": [
+    {
+      "id": "e4e359a6-37bf-41fd-ad66-722e5870da7e",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "fcfab2b8-8753-479f-985a-bcad376cdb67",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const LEGAL_SUFFIXES = [\n  'private limited', 'pvt ltd', 'pvt', 'pte ltd', 'llp', 'llc',\n  'incorporated', 'inc', 'technologies', 'technology', 'labs',\n  'corporation', 'corp', 'limited', 'ltd', 'gmbh'\n];\n\nconst SENIORITY_NOISE = [\n  'senior', 'sr', 'junior', 'jr', ' ii', ' iii', ' iv', 'lead', 'principal'\n];\n\nconst LOCATION_ALIASES = {\n  'bengaluru': 'bangalore', 'blr': 'bangalore',\n  'gurgaon': 'gurugram',\n  'delhi': 'delhi ncr', 'new delhi': 'delhi ncr', 'ncr': 'delhi ncr',\n  'bombay': 'mumbai',\n  'madras': 'chennai',\n  'poona': 'pune'\n};\n\nfunction normCompany(raw) {\n  let s = (raw || '').toLowerCase().trim();\n  s = s.replace(/[.,]/g, '');\n  for (const suffix of LEGAL_SUFFIXES) {\n    const re = new RegExp('\\\\b' + suffix + '\\\\b', 'g');\n    s = s.replace(re, '');\n  }\n  return s.replace(/\\s+/g, ' ').trim();\n}\n\nfunction normRole(raw) {\n  let s = (raw || '').toLowerCase().trim();\n  s = s.replace(/\\(.*?\\)/g, '');\n  s = s.replace(/#\\w+/g, '');\n  s = s.replace(/\\breq[-\\s]?\\d+\\b/g, '');\n  for (const noise of SENIORITY_NOISE) {\n    s = s.split(noise).join(' ');\n  }\n  s = s.replace(/[.,]/g, '');\n  return s.replace(/\\s+/g, ' ').trim();\n}\n\nfunction normLocation(raw) {\n  let s = (raw || '').toLowerCase().trim();\n  s = s.replace(/[.,]/g, '');\n  s = s.replace(/\\s+/g, ' ').trim();\n  if (LOCATION_ALIASES[s]) return LOCATION_ALIASES[s];\n  for (const alias of Object.keys(LOCATION_ALIASES)) {\n    if (s.includes(alias)) return LOCATION_ALIASES[alias];\n  }\n  return s;\n}\n\nconst results = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  const nc = normCompany(j.company);\n  const nr = normRole(j.role);\n  const nl = normLocation(j.location);\n  const normDescription = (j.description || '').toLowerCase().replace(/\\s+/g, ' ').trim().slice(0, 4000);\n\n  results.push({\n    json: {\n      ...j,\n      norm_company: nc,\n      norm_role: nr,\n      norm_location: nl,\n      norm_description: normDescription,\n      exact_key_input: nc + '|' + nr + '|' + nl,\n      content_key_input: normDescription\n    }\n  });\n}\nreturn results;"
+      }
+    },
+    {
+      "id": "f24b8317-15ff-43f3-bade-4222ccf162b4",
+      "name": "Hash Exact Key",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "binaryData": false,
+        "value": "={{ $json.exact_key_input }}",
+        "dataPropertyName": "id",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "3885fc70-d4bd-48cb-83d7-a9adbc20a24c",
+      "name": "Hash Content",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "binaryData": false,
+        "value": "={{ $json.content_key_input }}",
+        "dataPropertyName": "content_hash",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "acdb750a-35ff-4801-a669-553e9c688cb7",
+      "name": "Shape Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return $input.all().map(item => {\n  const j = item.json;\n  return {\n    json: {\n      id: j.id,\n      content_hash: j.content_hash,\n      source_id: j.source_id || null,\n      company: j.company,\n      role: j.role,\n      location: j.location || null,\n      employment_type: j.employment_type || null,\n      apply_url: j.apply_url,\n      source: j.source,\n      description: j.description || null,\n      norm_company: j.norm_company,\n      norm_description: j.norm_description,\n      posted_date: j.posted_date || null\n    }\n  };\n});"
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]]
+    },
+    "Normalize": {
+      "main": [[{ "node": "Hash Exact Key", "type": "main", "index": 0 }]]
+    },
+    "Hash Exact Key": {
+      "main": [[{ "node": "Hash Content", "type": "main", "index": 0 }]]
+    },
+    "Hash Content": {
+      "main": [[{ "node": "Shape Output", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "company": "PhonePe Technologies",
+          "role": "Software Engineer Intern",
+          "location": "Bengaluru",
+          "employment_type": "internship",
+          "apply_url": "https://boards.greenhouse.io/phonepe/jobs/1",
+          "source": "greenhouse",
+          "source_id": "gh-phonepe-1",
+          "description": "We are looking for a software engineer intern to join our backend team.",
+          "posted_date": "2026-08-10T00:00:00.000Z"
+        }
+      },
+      {
+        "json": {
+          "company": "phonepe",
+          "role": "software engineer intern",
+          "location": "blr",
+          "employment_type": "internship",
+          "apply_url": "https://boards.greenhouse.io/phonepe/jobs/1?utm=aggregator",
+          "source": "jsearch",
+          "source_id": "js-9981",
+          "description": "We are looking for a software engineer intern to join our backend team.",
+          "posted_date": "2026-08-10T00:00:00.000Z"
+        }
+      },
+      {
+        "json": {
+          "company": "Groww Pvt Ltd",
+          "role": "Senior Backend Engineer (Remote) #4521",
+          "location": "Mumbai",
+          "employment_type": "full_time",
+          "apply_url": "https://boards.greenhouse.io/groww/jobs/2",
+          "source": "greenhouse",
+          "source_id": "gh-groww-2",
+          "description": "Own the payments ledger service handling millions of transactions daily.",
+          "posted_date": "2026-08-11T00:00:00.000Z"
+        }
+      }
+    ]
+  }
+}

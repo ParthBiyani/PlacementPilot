@@ -59,9 +59,12 @@ services:
       GENERIC_TIMEZONE: ${TZ:-Asia/Kolkata}
       TZ: ${TZ:-Asia/Kolkata}
 
-      # Where WF-L0 fetches config from. Any HTTPS URL works — repo raw, a Gist,
-      # anything. Change this to point at your own fork.
-      PP_CONFIG_BASE_URL: ${PP_CONFIG_BASE_URL}
+      # PP_CONFIG_BASE_URL is NOT read from here. Discovered the hard way:
+      # this n8n version denies $env access from expressions ("access to env
+      # vars denied") by default. WF-L0 instead reads it via $vars, n8n's own
+      # Variables feature (Settings > Variables in the UI, or seed directly —
+      # see SETUP.md). The value in .env below is just the human-readable
+      # source of truth for what to put there.
 
       # Deliberately NOT set: NODE_FUNCTION_ALLOW_EXTERNAL / _ALLOW_BUILTIN.
       # Code nodes must stay import-free so the same workflows run on n8n Cloud.
@@ -72,6 +75,9 @@ services:
       N8N_RUNNERS_ENABLED: "true"
     volumes:
       - n8n_data:/home/node/.n8n
+      # Lets the n8n CLI (import:workflow / export:workflow / execute) work
+      # directly against the workflows/ folder in this repo — no API key needed.
+      - ./workflows:/home/node/workflows
     ports:
       - "127.0.0.1:5678:5678"
 

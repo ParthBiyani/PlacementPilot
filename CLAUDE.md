@@ -89,14 +89,16 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Node (host) | v6.10.1 — irrelevant, n8n runs in a container. Do not "fix" it. |
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
 | Postgres | **Running.** `placementpilot-postgres-1`, healthy, schema applied — 14 tables confirmed. Host port **5433**, not 5432 (a native Postgres Windows service already held 5432 — see `docker-compose.yml` comment). |
-| n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. No owner account created yet — first login still needed. |
-| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord + SerpApi entered so far. |
+| n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. Owner account created. `workflows/` bind-mounted into the container at `/home/node/workflows` so the CLI (`import:workflow`/`execute`/`publish:workflow`) can build and test directly against it — no API key needed. |
+| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord, SerpApi, Gmail, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
 | Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
-| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` now has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. |
-| Workflows | None built. |
+| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` seeded as an **n8n Variable** (`$vars`, not `$env` — see `DECISIONS.md` 2026-08-14). |
+| Workflows | **WF-L0 and WF-L1 built, imported, published, and CLI-tested against the live instance** — not just valid JSON, actually executed. Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-0/WF-1 next. |
 
 **Blocked on the user:** Anthropic + Adzuna + Jooble signups · real free-tier limits for the aggregators
-already created · entering remaining credentials into the n8n store · starter company list approval.
+already created · entering remaining credentials into the n8n store · starter company list approval ·
+the Gmail OAuth 403 (add own account to the OAuth consent screen's Test users list) · deleting the stray
+`client_secret_*.json` from the repo root once the Google credential is safely in n8n.
 
 ---
 
@@ -179,8 +181,12 @@ Unfinished items are never deleted. New work is added here.
 - [x] Real profile in `config/preferences.json` — derived from `Resumes/` (SDE, AI/ML, Data resumes), skills/projects merged, queries broadened to cover all three tracks
 
 ### Phase 1 — Config layer + ATS collection
-- [ ] WF-L0 lib-config — fetch, validate, cache with ETag, fallback + alarm
-- [ ] WF-L1 lib-normalize — normalization rules + exact key via Crypto node
+- [x] WF-L0 lib-config — fetch, validate, cache with ETag, fallback + alarm. Built and CLI-tested against
+      the real Postgres and the real GitHub-hosted config; all four outcomes (fresh/304/fallback/hard-fail)
+      verified. See `DECISIONS.md` 2026-08-14 for two real HTTP Request pitfalls found and fixed.
+- [x] WF-L1 lib-normalize — normalization rules + exact key via Crypto node. Built and verified: two
+      differently-sourced variants of the same posting collapse to the same dedup `id`; noisy role text
+      strips correctly.
 - [ ] WF-0 selftest — fixtures through WF-L1, diff, alarm
 - [ ] `db/seed_fixtures.sql`
 - [ ] WF-1 collect-ats — hourly, Switch(provider), upsert, write `runs`
@@ -306,3 +312,21 @@ WhatsApp as a second channel · more aggregators · public write-up
   profile text, and the project's own rule is no personal data outside `config/` and the credential store.
 - **Next:** remaining accounts (Anthropic, Adzuna, Jooble) and their credentials in the n8n store, then
   Phase 1 workflows (WF-L0, WF-L1, WF-0, WF-1) against the now-live instance.
+
+### 2026-08-14 — WF-L0 and WF-L1 built and tested against the live instance (continued)
+- Bind-mounted `workflows/` into the n8n container so the CLI can `import:workflow`/`execute`/
+  `publish:workflow` directly — no API key setup, no chat-exposed credentials.
+- Pulled the exact node-type registry from the running instance (`n8n export:nodes`, 906 types) before
+  writing any workflow JSON, so every node's parameters matched this specific n8n version instead of a
+  guess. Full detail in `FLOW.md` "Changed this session."
+- Built and CLI-tested `WF-L1 lib-normalize` and `WF-L0 lib-config` — not just imported, actually
+  *executed* against the real Postgres and the real GitHub-hosted `config/sources.json`. Found and fixed
+  two real bugs along the way (`$env` denied by default → switched to n8n's `$vars` Variables feature,
+  matching the original design; `ignoreResponseCode` doesn't cover a non-JSON error body → switched to
+  string response + manual parse). Both are now the standing pattern for every future HTTP node. Recorded
+  in `DECISIONS.md`.
+- Created the `pp-local-postgres` n8n credential via CLI import — this is our own Docker-internal
+  database, not a third-party secret, so no chat exposure was needed; value came straight from `.env`.
+- All test-only artifacts (a throwaway caller workflow, a seeded fake cache row, scratch test scripts)
+  deleted after use; nothing test-related got committed.
+- **Next:** WF-0 selftest + `db/seed_fixtures.sql`, then WF-1 collect-ats.

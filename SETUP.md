@@ -74,6 +74,13 @@ instance.
 > both support `pg_trgm`) by setting the connection string in the n8n credential instead. n8n Cloud works
 > too — the workflows are import-free and Cloud-compatible by design.
 
+**Set the config URL as an n8n Variable — not an environment variable.** This n8n version denies `$env`
+access from expressions by default, so `WF-L0` reads `PP_CONFIG_BASE_URL` via `$vars` instead. In the n8n
+UI: **Settings → Variables → Add Variable**, key `PP_CONFIG_BASE_URL`, value the same URL you put in
+`.env`. (Or seed it directly: `INSERT INTO n8n.variables (id, key, type, value) VALUES (gen_random_uuid(),
+'PP_CONFIG_BASE_URL', 'string', 'https://raw.githubusercontent.com/<you>/PlacementPilot/main/config');`
+via `docker compose exec -T postgres psql -U placementpilot -d placementpilot`.)
+
 ---
 
 ## 4. Discord **[you]**

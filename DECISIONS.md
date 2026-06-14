@@ -228,3 +228,37 @@ window in which to fire naturally.
 
 **Consequences.** The zero-result alarm is treated as a headline feature, not a nicety: a source
 returning 0 twice consecutively is the realistic way this project dies quietly.
+
+---
+
+## 2026-08-14 — Two HTTP Request pitfalls found building WF-L0, binding on every future HTTP node
+
+**Context.** Building and CLI-testing WF-L0 against the real running n8n instance (not blind JSON
+authoring) surfaced two behaviors that would have silently broken every workflow that fetches an external
+URL — WF-1c career pages, WF-1b aggregators, WF-1d discovery, WF-4 Gmail's classify step all use
+`n8n-nodes-base.httpRequest`.
+
+**Finding 1 — `$env` is denied by default in this n8n version.** An expression like
+`{{ $env.PP_CONFIG_BASE_URL }}` throws `ExpressionError: access to env vars denied`, contradicting the
+assumption (never actually verified before building) that env vars would be readable from expressions.
+**Decision:** use n8n's own **Variables** feature (`$vars.NAME`) instead — which is what the original
+design already specified in `CLAUDE.md` ("a URL held in an n8n variable"); the first implementation just
+used `$env` by mistake. Seeded via direct SQL insert into `n8n.variables` this session (not a secret, so
+no chat/credential-store question); the equivalent supported path is Settings → Variables in the UI.
+**Consequence:** `docker-compose.yml` no longer passes `PP_CONFIG_BASE_URL` into the n8n container's
+environment for this purpose — the `.env` entry is now just the human-readable reference for what to set
+as the Variable.
+
+**Finding 2 — `ignoreResponseCode: true` does not cover a non-JSON body.** With
+`responseFormat: "json"`, a non-2xx response whose body isn't valid JSON (e.g. GitHub raw's plain-text 404
+page) throws `Response body is not valid JSON` regardless of `ignoreResponseCode` — that option only
+suppresses treating the *status code* as an error, not a body-parsing failure. **Decision:** every HTTP
+Request node that must inspect status codes on failure uses `responseFormat: "string"` with
+`options.fullResponse: true`, and parses the body manually (`JSON.parse` in a downstream Code node,
+wrapped in try/catch) rather than relying on the node's built-in JSON mode.
+
+**Consequences.** Both fixes are now the standing pattern for every future HTTP Request node in this
+project, not just WF-L0. Verified end-to-end against the real GitHub-hosted config: all four WF-L0
+outcomes exercised and passed — `fresh` (200, cache written), `cached_not_modified` (304, conditional
+request via `If-None-Match`), `fallback_alarm` (fetch fails, stale cache served), `hard_fail_alarm` (fetch
+fails, no cache, throws — becomes WF-5's job to alarm once Phase 3 wires it).
