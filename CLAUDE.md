@@ -93,7 +93,7 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord, SerpApi, Gmail, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
 | Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` seeded as an **n8n Variable** (`$vars`, not `$env` — see `DECISIONS.md` 2026-08-14). |
-| Workflows | **WF-L0 and WF-L1 built, imported, published, and CLI-tested against the live instance** — not just valid JSON, actually executed. Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-0/WF-1 next. |
+| Workflows | **WF-L0, WF-L1 and WF-0 built, imported, published, and CLI-tested against the live instance** — not just valid JSON, actually executed, both happy and failure paths. Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-1 next. |
 
 **Blocked on the user:** Anthropic + Adzuna + Jooble signups · real free-tier limits for the aggregators
 already created · entering remaining credentials into the n8n store · starter company list approval ·
@@ -187,8 +187,10 @@ Unfinished items are never deleted. New work is added here.
 - [x] WF-L1 lib-normalize — normalization rules + exact key via Crypto node. Built and verified: two
       differently-sourced variants of the same posting collapse to the same dedup `id`; noisy role text
       strips correctly.
-- [ ] WF-0 selftest — fixtures through WF-L1, diff, alarm
-- [ ] `db/seed_fixtures.sql`
+- [x] WF-0 selftest — fixtures through WF-L1, diff, alarm. Built and CLI-tested both directions: happy
+      path (5/5 fixtures pass) and failure path (a deliberately wrong fixture was correctly caught,
+      reported with exact field/expected/actual, and thrown).
+- [x] `db/seed_fixtures.sql` — 5 real fixtures, expected hashes computed offline against the actual normalize logic
 - [ ] WF-1 collect-ats — hourly, Switch(provider), upsert, write `runs`
 - [ ] Verify: editing `sources.json` changes the next run's collection
 
@@ -330,3 +332,14 @@ WhatsApp as a second channel · more aggregators · public write-up
 - All test-only artifacts (a throwaway caller workflow, a seeded fake cache row, scratch test scripts)
   deleted after use; nothing test-related got committed.
 - **Next:** WF-0 selftest + `db/seed_fixtures.sql`, then WF-1 collect-ats.
+
+### 2026-08-14 — WF-0 built and verified (continued)
+- Computed exact expected `id` hashes for 5 fixtures offline (container's own Node runtime, same logic
+  WF-L1 runs), seeded `db/seed_fixtures.sql`: PhonePe dedup collapse, Groww noise-stripping, Gurgaon/
+  Gurugram location-alias collapse.
+- Built and CLI-tested `WF-0 selftest`. Found a second silent-zero-items bug (`Write Run`'s INSERT had no
+  `RETURNING`, so the pass/fail check after it never ran despite execution status reading "success") — see
+  `DECISIONS.md`, now a standing rule for every Postgres write in the project.
+- Verified both directions for real: happy path (5/5 pass, `runs` row written) and failure path (seeded a
+  deliberately wrong fixture, confirmed WF-0 reported the exact mismatch and threw, then deleted it).
+- **Next:** WF-1 collect-ats.

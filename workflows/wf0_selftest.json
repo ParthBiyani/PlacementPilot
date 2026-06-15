@@ -1,0 +1,171 @@
+{
+  "id": "fb2f353f1fad491e",
+  "name": "WF-0 selftest",
+  "nodes": [
+    {
+      "id": "cebd2841-ae7e-402c-a5da-70b61115ec52",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "parameters": {
+        "rule": { "interval": [{ "field": "days" }] }
+      }
+    },
+    {
+      "id": "743c7dca-0097-4d07-ad46-77f0950d0dbc",
+      "name": "Get Fixtures",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [440, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, kind, input, expected, note FROM test_fixtures WHERE kind = 'normalize' ORDER BY id"
+      },
+      "credentials": {
+        "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" }
+      }
+    },
+    {
+      "id": "13df3d66-c0fc-4ba4-87ee-29648d5d0342",
+      "name": "Prepare WF-L1 Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return $input.all().map(item => ({ json: item.json.input }));"
+      }
+    },
+    {
+      "id": "31e2f88a-446b-424e-a3da-c8c0e57fdd45",
+      "name": "Call WF-L1",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [880, 300],
+      "parameters": {
+        "source": "database",
+        "workflowId": "773d1f4a0f6b4bf7",
+        "mode": "once"
+      }
+    },
+    {
+      "id": "c12face1-4f77-48b7-984d-4b9813adb902",
+      "name": "Diff Against Expected",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const fixtures = $('Get Fixtures').all();\nconst actuals = $input.all();\n\nconst results = [];\nfor (let i = 0; i < fixtures.length; i++) {\n  const fixture = fixtures[i].json;\n  const actual = (actuals[i] && actuals[i].json) || {};\n  const expected = fixture.expected || {};\n  const mismatches = [];\n  for (const key of Object.keys(expected)) {\n    if (actual[key] !== expected[key]) {\n      mismatches.push({ field: key, expected: expected[key], actual: actual[key] });\n    }\n  }\n  results.push({\n    json: {\n      fixture_id: fixture.id,\n      kind: fixture.kind,\n      pass: mismatches.length === 0,\n      mismatches\n    }\n  });\n}\nreturn results;"
+      }
+    },
+    {
+      "id": "6b01ce92-ff17-45bd-ab0d-76eb7479406e",
+      "name": "Summarize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const results = $input.all().map(i => i.json);\nconst total = results.length;\nconst passed = results.filter(r => r.pass).length;\nconst failed = total - passed;\nconst failures = results.filter(r => !r.pass);\n\nreturn [{\n  json: {\n    total,\n    passed,\n    failed,\n    failures,\n    all_passed: failed === 0,\n    error_text: failed > 0 ? JSON.stringify(failures) : null\n  }\n}];"
+      }
+    },
+    {
+      "id": "e62b5e01-82df-4003-906f-4dc974331d22",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1540, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count, error) VALUES ('WF-0', now(), now(), $1, $2, $3) RETURNING id",
+        "additionalFields": {
+          "queryParams": "total,passed,error_text"
+        }
+      },
+      "credentials": {
+        "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" }
+      }
+    },
+    {
+      "id": "1725b98d-f942-4c4f-9e12-3cbbd5102a0e",
+      "name": "Is All Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1760, 300],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $('Summarize').item.json.all_passed }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "efe7f073-99bb-46ce-ac2f-50203c0a9980",
+      "name": "Finalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 200],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: $('Summarize').item.json }];"
+      }
+    },
+    {
+      "id": "60f238b5-6046-4bdf-bf54-04b72bfb224f",
+      "name": "Alarm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 420],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const s = $('Summarize').item.json;\nthrow new Error('WF-0 selftest FAILED: ' + s.failed + '/' + s.total + ' fixtures mismatched: ' + JSON.stringify(s.failures));"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Get Fixtures", "type": "main", "index": 0 }]]
+    },
+    "Get Fixtures": {
+      "main": [[{ "node": "Prepare WF-L1 Input", "type": "main", "index": 0 }]]
+    },
+    "Prepare WF-L1 Input": {
+      "main": [[{ "node": "Call WF-L1", "type": "main", "index": 0 }]]
+    },
+    "Call WF-L1": {
+      "main": [[{ "node": "Diff Against Expected", "type": "main", "index": 0 }]]
+    },
+    "Diff Against Expected": {
+      "main": [[{ "node": "Summarize", "type": "main", "index": 0 }]]
+    },
+    "Summarize": {
+      "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]]
+    },
+    "Write Run": {
+      "main": [[{ "node": "Is All Passed?", "type": "main", "index": 0 }]]
+    },
+    "Is All Passed?": {
+      "main": [
+        [{ "node": "Finalize", "type": "main", "index": 0 }],
+        [{ "node": "Alarm", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

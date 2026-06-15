@@ -262,3 +262,30 @@ project, not just WF-L0. Verified end-to-end against the real GitHub-hosted conf
 outcomes exercised and passed — `fresh` (200, cache written), `cached_not_modified` (304, conditional
 request via `If-None-Match`), `fallback_alarm` (fetch fails, stale cache served), `hard_fail_alarm` (fetch
 fails, no cache, throws — becomes WF-5's job to alarm once Phase 3 wires it).
+
+---
+
+## 2026-08-14 — Postgres `executeQuery` writes need `RETURNING`, or the workflow silently dead-ends
+
+**Context.** Building WF-0, the same bug appeared that WF-L0's `Upsert Cache` had already sidestepped by
+convention (referencing `$('NodeName')` instead of relying on passthrough) without the *reason* being
+written down: an `INSERT`/`UPDATE` via `n8n-nodes-base.postgres` `executeQuery` with no `RETURNING` clause
+produces **zero output items**. In n8n, zero items flowing into a node means that node — and everything
+downstream of it — simply does not execute. No error, no log line. WF-0's `Write Run` insert had no
+`RETURNING`, so `Is All Passed?` and everything after it silently never ran; the CLI execution reported
+`"status": "success"` with `"lastNodeExecuted": "Write Run"`, which looks like nothing is wrong unless you
+notice the workflow stopped one node early.
+
+**Decision:** every Postgres write node in this project ends its query with `RETURNING` something (even
+just the primary key), full stop. This is not optional style — it is required for the workflow's control
+flow after the write to run at all.
+
+**Why.** This is the second time in one session that "zero items" turned out to be a silent workflow
+killer distinct from an actual thrown error (the first was `Get Cached` in WF-L0, fixed with a `LEFT JOIN`
+against a synthetic single row for the same underlying reason). Both were only caught by actually
+executing the workflow via CLI and inspecting `lastNodeExecuted`, not by reading the JSON.
+
+**Consequences.** Applies to every future write: WF-1's `postings` upsert, WF-2's `evaluations` insert,
+WF-3's `notifications` insert, WF-3b's `applications` update, WF-4, WF-5's `runs` insert, WF-6's
+`eval_runs` insert. When reviewing any future workflow (own or otherwise), a Postgres write with no
+`RETURNING` immediately followed by more nodes is a bug, not a style choice.

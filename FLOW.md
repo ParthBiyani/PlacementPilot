@@ -17,7 +17,7 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 |---|---|---|---|
 | `WF-L0` lib-config | Execute Workflow (called by others) | on demand | ✅ |
 | `WF-L1` lib-normalize | Execute Workflow (called by others) | on demand | ✅ |
-| `WF-0` selftest | Schedule Trigger | daily | ⬜ |
+| `WF-0` selftest | Schedule Trigger | daily | ✅ |
 | `WF-1` collect-ats | Schedule Trigger | hourly | ⬜ |
 | `WF-1b` collect-aggregators | Schedule Trigger | daily | ⬜ |
 | `WF-1c` collect-pages | Schedule Trigger | daily | ⬜ |
@@ -256,3 +256,33 @@ a seeded fake cache row, scratch JS files) were deleted after use; nothing test-
 
 **Next:** WF-0 selftest and `db/seed_fixtures.sql`, then WF-1 collect-ats — the Switch/Schedule Trigger
 parameter schemas are already extracted and ready to use.
+
+### 2026-08-14 — WF-0 built and verified (continued)
+
+**`workflows/wf0_selftest.json` — built, tested, correct.** Schedule Trigger (daily) → Postgres "Get
+Fixtures" (`WHERE kind = 'normalize'`) → Code "Prepare WF-L1 Input" → Execute Workflow "Call WF-L1"
+(`source: database`, the real production reference) → Code "Diff Against Expected" (compares each fixture's
+`expected` keys against WF-L1's actual output, paired by array position via `$('Get Fixtures')`) → Code
+"Summarize" → Postgres "Write Run" → IF "Is All Passed?" → Code "Finalize" or Code "Alarm" (throws).
+
+`db/seed_fixtures.sql` seeds 5 frozen cases whose `expected.id` values were computed once, offline,
+against the real normalize logic running in n8n's own Node runtime — not guessed: a PhonePe posting
+arriving from two different sources with different casing collapses to the same `id` (the core dedup
+guarantee); a Groww posting with seniority/parenthetical/req-id noise strips correctly; "Gurgaon" and
+"Gurugram" collapse to the same `id` (location-alias guarantee).
+
+Testing method: CLI `execute` requires either a Manual Trigger or an Execute Workflow Trigger as the entry
+node — Schedule Trigger is not directly invocable that way. The **committed** file keeps its real Schedule
+Trigger and its real `source: database` reference to WF-L1 (matching Phase 0 wiring). A throwaway copy
+swapped only the trigger node and inlined WF-L1's JSON via `source: parameter`, exactly the same pattern
+used for WF-L0, then was deleted after use.
+
+Verified both directions: the happy path (5/5 fixtures pass, a `runs` row written, no throw) and the
+failure path (a deliberately wrong fixture seeded, run, confirmed WF-0 correctly reported
+`1/6 fixtures mismatched` with the exact field/expected/actual, threw, execution status `error`) — then
+the deliberate fixture and its `runs` rows were deleted.
+
+Found the second silent-zero-items bug of the session in `Write Run`'s missing `RETURNING` clause — see
+`DECISIONS.md` 2026-08-14 "Postgres `executeQuery` writes need `RETURNING`."
+
+**Next:** WF-1 collect-ats.
