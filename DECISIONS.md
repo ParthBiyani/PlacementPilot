@@ -289,3 +289,48 @@ executing the workflow via CLI and inspecting `lastNodeExecuted`, not by reading
 WF-3's `notifications` insert, WF-3b's `applications` update, WF-4, WF-5's `runs` insert, WF-6's
 `eval_runs` insert. When reviewing any future workflow (own or otherwise), a Postgres write with no
 `RETURNING` immediately followed by more nodes is a bug, not a style choice.
+
+---
+
+## 2026-08-14 — Three more pitfalls found building WF-1, against real ATS APIs
+
+**Context.** WF-1 is the first workflow fetching from *real third-party APIs with real data volume*
+(Greenhouse, Lever, Ashby — hundreds of jobs per company), not a single controlled config file. Testing
+against real Postman/Groww/Linear boards surfaced three more issues no amount of reading the JSON would
+have caught.
+
+**Finding 3 — `options.fullResponse` is silently ignored unless `jsonParameters: true` is also set.**
+Without it, the HTTP Request v1 node dropped `statusCode`/`headers` entirely and returned only the parsed
+body under `dataPropertyName` — no error, just a different, smaller shape than requested. WF-L0 happened
+to have `jsonParameters: true` already (needed there for a custom `If-None-Match` header), which is why
+its `fullResponse` worked and masked this dependency. **Decision:** `jsonParameters: true` is now set on
+every HTTP Request node in this project that also sets `options.fullResponse: true`, regardless of
+whether custom headers are needed.
+
+**Finding 4 — the response body's field name depends on the server's `Content-Type`, not on
+`responseFormat`.** `raw.githubusercontent.com` serves `.json` files as `text/plain` (a known GitHub
+quirk), so WF-L0 correctly got a raw string under `body`. Greenhouse/Lever/Ashby correctly send
+`Content-Type: application/json`, so the node auto-parses the body into an object and places it under
+`dataPropertyName` (`data`) *instead of* `body` — even with `responseFormat: "string"` explicitly set.
+Relying on `resp.body` unconditionally is not safe. **Decision:** every parser reads
+`resp.body !== undefined ? resp.body : resp.data`, then only calls `JSON.parse` if that value is still a
+string — handling both server behaviors instead of assuming one.
+
+**Finding 5 — a Postgres `executeQuery` node with no per-item query parameters still runs once per
+input item, not once total.** `Get Active ATS Sources` (a static `SELECT`, no `$1` placeholders) was fed
+4 items from `Sync Sources` and executed the identical query 4 times, returning 4×4=16 rows instead of 4.
+**Decision:** any query meant to run exactly once, regardless of upstream item count, must be fed by
+exactly one item — a small `Collapse To Single Trigger` Code node (`return [{ json: {} }]`) sits between
+any many-items node and a single-shot query.
+
+**Also found (schema bug, not a node pitfall):** the first working version set `postings.source_id` to a
+compound `board:jobid` string (e.g. `greenhouse:postman:4880153101`), which violates the
+`postings_source_id_fkey` constraint — `source_id` must be exactly the board's `sources.id`
+(`greenhouse:postman`). Fixed by dropping the per-job suffix; the posting's own `id` (the WF-L1 dedup
+hash) already uniquely identifies it.
+
+**Consequences.** Verified end-to-end against real data after all five fixes: Postman (105 postings),
+Groww (8), Linear via Ashby (32) — 145 real, correctly-parsed, correctly-deduplicated postings, zero
+duplicate primary keys, `runs` rows with accurate fetched/new/deduped counts per provider, and Lever
+(Mistral, genuinely zero live postings) handled without error. All test data and the throwaway test
+workflow were deleted after verification.

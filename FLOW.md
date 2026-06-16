@@ -18,7 +18,7 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-L0` lib-config | Execute Workflow (called by others) | on demand | ✅ |
 | `WF-L1` lib-normalize | Execute Workflow (called by others) | on demand | ✅ |
 | `WF-0` selftest | Schedule Trigger | daily | ✅ |
-| `WF-1` collect-ats | Schedule Trigger | hourly | ⬜ |
+| `WF-1` collect-ats | Schedule Trigger | hourly | ✅ (built, tested; **not yet activated**) |
 | `WF-1b` collect-aggregators | Schedule Trigger | daily | ⬜ |
 | `WF-1c` collect-pages | Schedule Trigger | daily | ⬜ |
 | `WF-1d` discover | Schedule Trigger | weekly | ⬜ |
@@ -286,3 +286,65 @@ Found the second silent-zero-items bug of the session in `Write Run`'s missing `
 `DECISIONS.md` 2026-08-14 "Postgres `executeQuery` writes need `RETURNING`."
 
 **Next:** WF-1 collect-ats.
+
+### 2026-08-14 — WF-1 built and verified against real ATS APIs (continued)
+
+**`workflows/wf1_collect_ats.json` — built, tested, correct. 21 nodes.** Schedule Trigger (hourly) → Code
+"Request Sources Config" → Execute Workflow "Call WF-L0" (`source: database`) → Code "Extract ATS Entries"
+(reads `config.ats`) → Postgres "Sync Sources" (upserts each entry into `sources`, `kind='ats'`,
+`origin='manual'`) → Code "Collapse To Single Trigger" (see Finding 5 below — required so the next query
+runs once, not once per synced source) → Postgres "Get Active ATS Sources" (`WHERE kind='ats' AND
+active=true` — reads back from `sources`, not from config directly, so `WF-1d`'s future discovered
+sources join the same stream automatically) → Switch "By Provider" (string match on `provider`, 3 rules +
+`fallbackOutput: -1` for not-yet-supported providers) → three parallel branches (HTTP fetch → Code parse →
+Split Out `postings`), one per provider → **all three converge on the same tail**: Execute Workflow
+"Call WF-L1" (`source: database`) → Postgres "Dedup Upsert" (`ON CONFLICT (id) DO UPDATE SET
+last_seen = now() RETURNING id, (xmax = 0) AS was_inserted` — the `xmax` trick distinguishes a fresh
+insert from a dedup hit) → Code "Tally Results" → Postgres "Write Run".
+
+Each provider branch is a **separate wave** through the shared tail (n8n runs a shared downstream node
+once per incoming connection that actually carries items, not once combined) — verified directly: the
+Greenhouse wave (115 items) and the Ashby wave (32 items) each independently executed `Call WF-L1` through
+`Write Run`, producing two separate `runs` rows, one per provider. This is the right granularity for the
+Phase 3 zero-result alarm (per-source, not per-run).
+
+Real per-provider response shapes were fetched and inspected live before writing any parser — not
+assumed:
+- **Greenhouse** `jobs[].{id, title, location.name, absolute_url, updated_at, content}` — `content` is
+  HTML **double-entity-encoded** (`&lt;div&gt;`), decoded then tag-stripped before storing as `description`.
+- **Lever** is a bare JSON array (not `{postings:[...]}`):
+  `[].{id, text, categories.{location, commitment}, hostedUrl, applyUrl, createdAt (epoch ms), descriptionPlain}`.
+- **Ashby** `jobs[].{id, title, employmentType, location, jobUrl, applyUrl, publishedAt, descriptionPlain}`.
+
+Found and fixed five real issues by testing against live data, not by re-reading the JSON — three are new
+standing HTTP/Postgres pitfalls (`DECISIONS.md` 2026-08-14 "Three more pitfalls..."), one is the schema
+bug of setting `postings.source_id` to a compound `board:jobid` string instead of the plain board id (FK
+violation), and the `Get Active ATS Sources` per-item-re-execution bug is now fixed with a
+`Collapse To Single Trigger` node.
+
+**Testing method:** same pattern as WF-L0/WF-0 — the committed file keeps its real `Schedule Trigger` and
+real `source: database` references to WF-L0 *and* WF-L1 (both inlined only in a throwaway test copy). The
+full 15-source set hit a CLI-only limitation (`RangeError: Invalid string length` — the CLI dumps the
+*entire* execution trace as one JSON blob at the end; Ashby alone returns 734 jobs for OpenAI, and with
+both sub-workflows also inlined the trace exceeded V8's string limit) — this does not affect production,
+which runs inside the server process and never serializes a trace this way. Re-tested against a small
+known-good subset (`greenhouse:postman`, `greenhouse:groww`, `ashby:linear`, `lever:mistral`) instead,
+which was sufficient to exercise all three providers plus the zero-postings case (Lever/Mistral genuinely
+has no live postings right now) without hitting the harness ceiling.
+
+**Verified real result:** 145 real postings landed correctly — Postman 105, Groww 8, Linear 32 — zero
+duplicate primary keys, accurate `runs` rows (`fetched`/`new_count`/`deduped`) per provider. All test data
+(`sources`/`postings`/`runs` rows, the throwaway workflow) deleted after verification.
+
+**Known gap, deliberately deferred to Phase 3:** a provider branch that fetches successfully but finds
+*zero* postings (e.g. Lever/Mistral) never reaches `Write Run`, because zero items flowing into a node
+means it doesn't fire — so no `runs` row gets written for a genuine zero-result fetch. The Phase 3
+zero-result alarm needs this distinguished from "branch never ran"; likely fix is the same
+`LEFT JOIN`-against-a-synthetic-row pattern used in WF-L0's `Get Cached`, applied so the tail always gets
+at least one item even when `postings` was empty.
+
+**WF-1 is built, tested, and published — but left `active: false`.** Activating it starts real hourly
+external API traffic and continuous writes; that's the user's call, not something to flip on unasked.
+
+**Next:** Phase 1 complete. Phase 2 (scoring + immediate Discord alerts) is next, gated on the Anthropic
+and Discord credentials being in the n8n store and the profile threshold being tuned.

@@ -80,7 +80,7 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-13.*
 
-**Phase: 0 (Foundations), in progress. Runtime resolved.**
+**Phase: 1 (Config layer + ATS collection) complete. Phase 2 (scoring + alerts) next.**
 
 | Item | State |
 |---|---|
@@ -93,7 +93,7 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord, SerpApi, Gmail, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
 | Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` seeded as an **n8n Variable** (`$vars`, not `$env` — see `DECISIONS.md` 2026-08-14). |
-| Workflows | **WF-L0, WF-L1 and WF-0 built, imported, published, and CLI-tested against the live instance** — not just valid JSON, actually executed, both happy and failure paths. Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-1 next. |
+| Workflows | **Phase 1 complete: WF-L0, WF-L1, WF-0, WF-1 all built, imported, published, and tested against the live instance and real ATS APIs** — 145 real postings landed correctly (Postman 105, Groww 8, Linear 32). Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-1 is `active: false` — left for the user to switch on. |
 
 **Blocked on the user:** Anthropic + Adzuna + Jooble signups · real free-tier limits for the aggregators
 already created · entering remaining credentials into the n8n store · starter company list approval ·
@@ -191,8 +191,15 @@ Unfinished items are never deleted. New work is added here.
       path (5/5 fixtures pass) and failure path (a deliberately wrong fixture was correctly caught,
       reported with exact field/expected/actual, and thrown).
 - [x] `db/seed_fixtures.sql` — 5 real fixtures, expected hashes computed offline against the actual normalize logic
-- [ ] WF-1 collect-ats — hourly, Switch(provider), upsert, write `runs`
-- [ ] Verify: editing `sources.json` changes the next run's collection
+- [x] WF-1 collect-ats — hourly, Switch(provider), upsert, write `runs`. Built and tested against real
+      Greenhouse/Lever/Ashby APIs: 145 real postings landed correctly, zero duplicate IDs, accurate
+      per-provider `runs` rows. Five real bugs found and fixed — see `DECISIONS.md` 2026-08-14. **Not yet
+      activated** (`active: false`) — starts real hourly external traffic once switched on, left for the
+      user to decide.
+- [x] Verify: editing `sources.json` changes the next run's collection — true by construction (`Sync
+      Sources` re-reads `config.ats` from WF-L0 every run and upserts into `sources`), and all 15 real
+      seeded entries were observed flowing through end-to-end. Not yet observed across an actual file
+      edit + real scheduled run, since WF-1 isn't activated yet.
 
 ### Phase 2 — Scoring and immediate alerts *(tool becomes useful)*
 - [ ] Conservative prefilter driven by `preferences.json`
@@ -203,8 +210,13 @@ Unfinished items are never deleted. New work is added here.
 
 ### Phase 3 — Reliability
 - [ ] WF-5 error handler; set as Error Workflow on every workflow
-- [ ] Retry on Fail (3, exponential) on all HTTP nodes; Continue On Fail per source
-- [ ] Zero-result alarm (source returns 0 twice consecutively)
+- [x] Retry on Fail (3, exponential) on WF-1's three HTTP nodes; Continue On Fail per source — done while
+      building WF-1 (not strictly Phase 1 scope, but essentially free to include at the same time)
+- [ ] Zero-result alarm (source returns 0 twice consecutively) — **first fix this WF-1 gap:** a provider
+      branch with zero postings never reaches `Write Run` (zero items = the node doesn't fire), so no
+      `runs` row gets written for a genuine zero-result fetch, indistinguishable from "didn't run". Likely
+      fix: the same `LEFT JOIN`-against-a-synthetic-row pattern already used in WF-L0's `Get Cached`. See
+      `FLOW.md` 2026-08-14.
 - [ ] Config-fetch failure alarm
 - [ ] Weekly workflow export to git via n8n REST API
 - [ ] Chaos test: dead token mid-run recovers unattended
@@ -343,3 +355,32 @@ WhatsApp as a second channel · more aggregators · public write-up
 - Verified both directions for real: happy path (5/5 pass, `runs` row written) and failure path (seeded a
   deliberately wrong fixture, confirmed WF-0 reported the exact mismatch and threw, then deleted it).
 - **Next:** WF-1 collect-ats.
+
+### 2026-08-14 — WF-1 built and verified against real ATS APIs (continued) — Phase 1 complete
+- Fetched real, live response shapes from Greenhouse/Lever/Ashby before writing any parser (not assumed):
+  Greenhouse's `content` field is HTML *double-entity-encoded*; Lever returns a bare array, not
+  `{postings:[...]}`; both confirmed via live curl against Postman, Palantir and OpenAI's real boards.
+- Built the 21-node WF-1: config → sync into `sources` table → per-provider fetch/parse/split → shared
+  WF-L1 normalize + Postgres dedup-upsert tail (using the `xmax = 0` trick to distinguish a fresh insert
+  from a dedup hit) → per-provider `runs` row.
+- Found and fixed **five real bugs** by testing against real data, none of which would have surfaced from
+  reading the JSON: `fullResponse` silently ignored without `jsonParameters: true`; the response body's
+  field name depends on the server's `Content-Type`, not on `responseFormat` (GitHub raw serves
+  `text/plain`, real APIs serve `application/json`, so `resp.body` isn't reliably where the content is);
+  a static Postgres query re-executes once per input item, not once total, if fed multiple items; and a
+  schema bug — `postings.source_id` was set to a compound `board:jobid` string, violating its foreign key
+  to `sources(id)`. All five now recorded in `DECISIONS.md` as standing rules for WF-1b/WF-1c/WF-1d/WF-2/WF-4.
+- The full 15-source test hit a CLI-only limit (`RangeError: Invalid string length` serializing the whole
+  execution trace with hundreds of real jobs plus two inlined sub-workflows) — re-tested against a small
+  known-good subset instead (Postman, Groww, Linear, Mistral), sufficient to exercise all three providers
+  including the genuine-zero-postings case.
+- **Verified for real:** 145 real postings landed correctly — Postman 105, Groww 8, Linear 32 — zero
+  duplicate primary keys, accurate `runs` rows per provider. All test data and the throwaway workflow
+  deleted after verification.
+- Found a real gap for Phase 3: a zero-postings branch never writes a `runs` row (zero items = the node
+  never fires), so the future zero-result alarm needs the same guaranteed-one-row pattern WF-L0 already
+  uses for `Get Cached`. Added to the Phase 3 TODO.
+- WF-1 is built, tested, published — and deliberately left `active: false`. Activating it means real
+  hourly external API traffic and continuous writes; not something to switch on unasked.
+- **Phase 1 is complete.** Next: Phase 2 — conservative prefilter, `prompts/v1.md`, WF-2 score, WF-3
+  notify. Gated on the Anthropic and Discord credentials being in the n8n store.

@@ -1,0 +1,646 @@
+{
+  "id": "75a4a1a8497c48f0",
+  "name": "WF-1 collect-ats",
+  "nodes": [
+    {
+      "id": "86139246-7390-4d0f-9c0c-60777d4e8984",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        500
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dc6ed0ac-3e2b-450e-ab8f-a4b27476528e",
+      "name": "Request Sources Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { file: 'sources.json' } }];"
+      }
+    },
+    {
+      "id": "633668a0-48fb-4c0b-8e27-5d7f724d1160",
+      "name": "Call WF-L0",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        500
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "8e45da373fd94a90",
+        "mode": "once"
+      }
+    },
+    {
+      "id": "33d9429d-998e-4a8d-af2e-18fcfdde1b99",
+      "name": "Extract ATS Entries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const result = $input.first().json;\nconst config = result.config || {};\nconst entries = config.ats || [];\n\nreturn entries.map(e => ({\n  json: {\n    id: e.provider + ':' + e.token,\n    provider: e.provider,\n    token: e.token,\n    company: e.company\n  }\n}));"
+      }
+    },
+    {
+      "id": "d058472a-529b-4f65-a7ea-2e3f694e9e30",
+      "name": "Sync Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        500
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO sources (id, kind, provider, company, config, poll_tier, origin, active) VALUES ($1, 'ats', $2, $3, jsonb_build_object('token', $4), 'hourly', 'manual', true) ON CONFLICT (id) DO UPDATE SET company = EXCLUDED.company, config = EXCLUDED.config, active = true RETURNING id",
+        "additionalFields": {
+          "queryParams": "id,provider,company,token"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "9c1e2f3a-1111-4b2c-8d3e-abcdef012345",
+      "name": "Collapse To Single Trigger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1190,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: {} }];"
+      }
+    },
+    {
+      "id": "501b870e-2ba9-4917-9d3a-5f4dff4d5971",
+      "name": "Get Active ATS Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        500
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, provider, company, config->>'token' AS token FROM sources WHERE kind = 'ats' AND active = true ORDER BY id"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "c7e4320d-d4fd-4a81-aaf7-f8834214ff5b",
+      "name": "By Provider",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        500
+      ],
+      "parameters": {
+        "mode": "rules",
+        "dataType": "string",
+        "value1": "={{ $json.provider }}",
+        "rules": {
+          "rules": [
+            {
+              "operation": "equal",
+              "value2": "greenhouse",
+              "output": 0
+            },
+            {
+              "operation": "equal",
+              "value2": "lever",
+              "output": 1
+            },
+            {
+              "operation": "equal",
+              "value2": "ashby",
+              "output": 2
+            }
+          ]
+        },
+        "fallbackOutput": -1
+      }
+    },
+    {
+      "id": "d72162da-e14c-4221-9e01-809d54c298c0",
+      "name": "Fetch Greenhouse",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        260
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "=https://boards-api.greenhouse.io/v1/boards/{{ $json.token }}/jobs?content=true",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "f3a42047-a931-4841-92d6-8afad606a15c",
+      "name": "Parse Greenhouse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        260
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function stripHtml(html) {\n  if (!html) return '';\n  let s = html;\n  s = s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n  s = s.replace(/<[^>]+>/g, ' ');\n  s = s.replace(/&nbsp;/g, ' ');\n  return s.replace(/\\s+/g, ' ').trim();\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'greenhouse', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet data;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'greenhouse', fetch_failed: true, parse_error: true, postings: [] } };\n}\n\nconst jobs = data.jobs || [];\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.title,\n  location: (j.location && j.location.name) || null,\n  employment_type: null,\n  apply_url: j.absolute_url,\n  source: 'greenhouse',\n  source_id: source.id,\n  description: stripHtml(j.content),\n  posted_date: j.updated_at || null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'greenhouse', postings } };\n"
+      }
+    },
+    {
+      "id": "c7aa8708-fd55-4a56-a74f-543227eb32c8",
+      "name": "Split Greenhouse Postings",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2180,
+        260
+      ],
+      "parameters": {
+        "fieldToSplitOut": "postings",
+        "include": "noOtherFields"
+      }
+    },
+    {
+      "id": "82e910e3-bd5d-4aa9-99f0-7e52acebae4b",
+      "name": "Fetch Lever",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        500
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "=https://api.lever.co/v0/postings/{{ $json.token }}?mode=json",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "1b123316-423e-4981-bab7-61a2c8352f92",
+      "name": "Parse Lever",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function mapCommitment(c) {\n  if (!c) return null;\n  const s = c.toLowerCase();\n  if (s.includes('intern')) return 'internship';\n  if (s.includes('full')) return 'full_time';\n  if (s.includes('part')) return 'part_time';\n  if (s.includes('contract')) return 'contract';\n  return s.replace(/\\s+/g, '_');\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'lever', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet jobs;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  jobs = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'lever', fetch_failed: true, parse_error: true, postings: [] } };\n}\nif (!Array.isArray(jobs)) jobs = [];\n\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.text,\n  location: (j.categories && j.categories.location) || null,\n  employment_type: mapCommitment(j.categories && j.categories.commitment),\n  apply_url: j.hostedUrl || j.applyUrl,\n  source: 'lever',\n  source_id: source.id,\n  description: (j.descriptionPlain || '').replace(/\\s+/g, ' ').trim(),\n  posted_date: j.createdAt ? new Date(j.createdAt).toISOString() : null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'lever', postings } };\n"
+      }
+    },
+    {
+      "id": "ff9b0246-1d3e-4fe2-b138-a29dfd9e955a",
+      "name": "Split Lever Postings",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2180,
+        500
+      ],
+      "parameters": {
+        "fieldToSplitOut": "postings",
+        "include": "noOtherFields"
+      }
+    },
+    {
+      "id": "e332da2f-f818-416d-9346-894ea66de043",
+      "name": "Fetch Ashby",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        740
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "=https://api.ashbyhq.com/posting-api/job-board/{{ $json.token }}",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "8acef31f-70a0-44e0-a290-ef6df770e0c2",
+      "name": "Parse Ashby",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        740
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function mapEmploymentType(t) {\n  if (!t) return null;\n  const map = { FullTime: 'full_time', PartTime: 'part_time', Intern: 'internship', Contract: 'contract', Temporary: 'contract' };\n  return map[t] || t.toLowerCase();\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'ashby', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet data;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'ashby', fetch_failed: true, parse_error: true, postings: [] } };\n}\n\nconst jobs = data.jobs || [];\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.title,\n  location: j.location || null,\n  employment_type: mapEmploymentType(j.employmentType),\n  apply_url: j.jobUrl || j.applyUrl,\n  source: 'ashby',\n  source_id: source.id,\n  description: (j.descriptionPlain || '').replace(/\\s+/g, ' ').trim(),\n  posted_date: j.publishedAt || null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'ashby', postings } };\n"
+      }
+    },
+    {
+      "id": "c7858cf5-a5e4-4fbb-bc6e-000c2adaddb4",
+      "name": "Split Ashby Postings",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2180,
+        740
+      ],
+      "parameters": {
+        "fieldToSplitOut": "postings",
+        "include": "noOtherFields"
+      }
+    },
+    {
+      "id": "5bb01493-09fe-411b-84eb-df173e445eaa",
+      "name": "Call WF-L1",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2420,
+        500
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "773d1f4a0f6b4bf7",
+        "mode": "once"
+      }
+    },
+    {
+      "id": "3b9cf67d-76f1-4e43-b1f1-cc2c90adc233",
+      "name": "Dedup Upsert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        2640,
+        500
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, (xmax = 0) AS was_inserted",
+        "additionalFields": {
+          "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "6a5b613d-afae-4604-9c6d-9425f7839398",
+      "name": "Tally Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst total = items.length;\nconst inserted = items.filter(i => i.json.was_inserted === true).length;\nconst deduped = total - inserted;\nconst sourceItems = $('Call WF-L1').all();\nconst provider = sourceItems.length > 0 ? (sourceItems[0].json.source || 'unknown') : 'unknown';\n\nreturn [{ json: { provider, fetched: total, new_count: inserted, deduped } }];"
+      }
+    },
+    {
+      "id": "42d0a1fd-eacb-4821-87a0-b56621135b94",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        500
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, source_id, started_at, finished_at, fetched, new_count, deduped) VALUES ('WF-1', $1, now(), now(), $2, $3, $4) RETURNING id",
+        "additionalFields": {
+          "queryParams": "provider,fetched,new_count,deduped"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Request Sources Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Sources Config": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L0": {
+      "main": [
+        [
+          {
+            "node": "Extract ATS Entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract ATS Entries": {
+      "main": [
+        [
+          {
+            "node": "Sync Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Sources": {
+      "main": [
+        [
+          {
+            "node": "Collapse To Single Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collapse To Single Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Active ATS Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active ATS Sources": {
+      "main": [
+        [
+          {
+            "node": "By Provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "By Provider": {
+      "main": [
+        [
+          {
+            "node": "Fetch Greenhouse",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Lever",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Ashby",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Greenhouse": {
+      "main": [
+        [
+          {
+            "node": "Parse Greenhouse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Greenhouse": {
+      "main": [
+        [
+          {
+            "node": "Split Greenhouse Postings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Greenhouse Postings": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Lever": {
+      "main": [
+        [
+          {
+            "node": "Parse Lever",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Lever": {
+      "main": [
+        [
+          {
+            "node": "Split Lever Postings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Lever Postings": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Ashby": {
+      "main": [
+        [
+          {
+            "node": "Parse Ashby",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ashby": {
+      "main": [
+        [
+          {
+            "node": "Split Ashby Postings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Ashby Postings": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L1": {
+      "main": [
+        [
+          {
+            "node": "Dedup Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup Upsert": {
+      "main": [
+        [
+          {
+            "node": "Tally Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally Results": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
