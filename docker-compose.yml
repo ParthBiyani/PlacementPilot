@@ -59,12 +59,18 @@ services:
       GENERIC_TIMEZONE: ${TZ:-Asia/Kolkata}
       TZ: ${TZ:-Asia/Kolkata}
 
-      # PP_CONFIG_BASE_URL is NOT read from here. Discovered the hard way:
-      # this n8n version denies $env access from expressions ("access to env
-      # vars denied") by default. WF-L0 instead reads it via $vars, n8n's own
-      # Variables feature (Settings > Variables in the UI, or seed directly —
-      # see SETUP.md). The value in .env below is just the human-readable
-      # source of truth for what to put there.
+      # PP_CONFIG_BASE_URL: read via $env in WF-L0. Two things had to be true
+      # for that to work, both discovered the hard way:
+      #   1. $env access from expressions is denied by default
+      #      ("access to env vars denied") — N8N_BLOCK_ENV_ACCESS_IN_NODE
+      #      below turns that off.
+      #   2. n8n's own Variables feature ($vars) — the first thing tried
+      #      instead of $env — is gated behind a paid plan on this edition.
+      #      It silently resolves to `undefined` rather than erroring, which
+      #      sent every WF-L0 fetch to a literal "undefined" hostname. Do not
+      #      go back to $vars without confirming Variables is unlocked.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      PP_CONFIG_BASE_URL: ${PP_CONFIG_BASE_URL}
 
       # Deliberately NOT set: NODE_FUNCTION_ALLOW_EXTERNAL / _ALLOW_BUILTIN.
       # Code nodes must stay import-free so the same workflows run on n8n Cloud.

@@ -37,7 +37,7 @@
       "position": [660, 300],
       "parameters": {
         "requestMethod": "GET",
-        "url": "={{ $vars.PP_CONFIG_BASE_URL }}/{{ $json.file }}",
+        "url": "={{ $env.PP_CONFIG_BASE_URL }}/{{ $json.file }}",
         "responseFormat": "string",
         "dataPropertyName": "data",
         "jsonParameters": true,
@@ -58,7 +58,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const resp = $input.first().json;\nconst cached = $('Get Cached').item.json;\nconst file = cached.file;\n\nlet outcome, config, new_etag = null;\n\nif (resp.statusCode === 200) {\n  try {\n    config = JSON.parse(resp.body);\n    outcome = 'fresh';\n    const headers = resp.headers || {};\n    new_etag = headers.etag || headers.ETag || null;\n  } catch (e) {\n    // 200 but not valid JSON -- treat exactly like a fetch failure\n    if (cached.cached_body) {\n      outcome = 'fallback_alarm';\n      config = cached.cached_body;\n    } else {\n      outcome = 'hard_fail_alarm';\n      config = null;\n    }\n  }\n} else if (resp.statusCode === 304) {\n  outcome = 'cached_not_modified';\n  config = cached.cached_body;\n} else if (cached.cached_body) {\n  outcome = 'fallback_alarm';\n  config = cached.cached_body;\n} else {\n  outcome = 'hard_fail_alarm';\n  config = null;\n}\n\nreturn [{ json: { file, config, outcome, new_etag, statusCode: resp.statusCode || null } }];"
+        "jsCode": "const resp = $input.first().json;\nconst cached = $('Get Cached').item.json;\nconst file = cached.file;\n\nlet outcome, config, new_etag = null;\n\nif (resp.statusCode === 200) {\n  try {\n    // Field name depends on the server's Content-Type, not on responseFormat:\n    // n8n auto-parses a JSON-looking text/plain body into an object under\n    // dataPropertyName ('data') instead of leaving it as a string under 'body'.\n    const raw = resp.body !== undefined ? resp.body : resp.data;\n    config = typeof raw === 'string' ? JSON.parse(raw) : raw;\n    if (config === undefined || config === null) throw new Error('empty response body');\n    outcome = 'fresh';\n    const headers = resp.headers || {};\n    new_etag = headers.etag || headers.ETag || null;\n  } catch (e) {\n    // 200 but not valid JSON -- treat exactly like a fetch failure\n    if (cached.cached_body) {\n      outcome = 'fallback_alarm';\n      config = cached.cached_body;\n    } else {\n      outcome = 'hard_fail_alarm';\n      config = null;\n    }\n  }\n} else if (resp.statusCode === 304) {\n  outcome = 'cached_not_modified';\n  config = cached.cached_body;\n} else if (cached.cached_body) {\n  outcome = 'fallback_alarm';\n  config = cached.cached_body;\n} else {\n  outcome = 'hard_fail_alarm';\n  config = null;\n}\n\nreturn [{ json: { file, config, outcome, new_etag, statusCode: resp.statusCode || null } }];"
       }
     },
     {

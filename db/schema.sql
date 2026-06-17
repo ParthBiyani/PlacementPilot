@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS evaluations (
   should_apply   BOOLEAN,
   reason         TEXT,
   missing_skills JSONB,
+  deadline       TEXT,   -- free text as stated in the posting (e.g. 'Rolling', '2026-09-15'); null if not stated -- never inferred
+  eligibility    TEXT,   -- free text as stated in the posting (e.g. 'Final year, CGPA 7.0+'); null if not stated -- never inferred
   input_tokens   INT,
   output_tokens  INT,
   cost_usd       NUMERIC(10,6),

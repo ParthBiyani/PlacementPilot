@@ -22,8 +22,8 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-1b` collect-aggregators | Schedule Trigger | daily | ⬜ |
 | `WF-1c` collect-pages | Schedule Trigger | daily | ⬜ |
 | `WF-1d` discover | Schedule Trigger | weekly | ⬜ |
-| `WF-2` score | Execute Workflow (from collectors) | per batch | ⬜ |
-| `WF-3` notify | Execute Workflow (from WF-2) | per posting | ⬜ |
+| `WF-2` score | Execute Workflow (from collectors) | per batch | ✅ |
+| `WF-3` notify | Execute Workflow (from WF-2) | per posting | ✅ |
 | `WF-3b` inbound | **Webhook** — the only public surface | on interaction | ⬜ |
 | `WF-4` gmail | Gmail Trigger | 15 min | ⬜ |
 | `WF-5` error | Error Workflow on every workflow above | on failure | ⬜ |
@@ -73,30 +73,52 @@ Schedule (hourly)
            │     reject reason → runs.prefilter_reasons
            │     AMBIGUOUS ALWAYS PASSES THROUGH
            │
-           ├─ Postgres: evaluations cache lookup
+           ├─ Crypto: hash prompt_version = sha256(system_message)
+           │     system_message = template with profile interpolated,
+           │     identical for every posting in this batch
+           │
+           ├─ IF prefilter_passed? ── false → dropped (counted in Tally, no further node)
+           │
+           ├─ Postgres "Check Cache": SELECT ... LEFT JOIN evaluations
            │     key = (content_hash, prompt_version, model)
-           │     prompt_version = sha256(template + profile)  ← Crypto node
-           │     ├─ hit  → reuse, cache_hits++
-           │     └─ miss ↓
+           │     identity fields (posting_id/company/role/location/…) ride through
+           │     as literal SELECT params, not read back from upstream nodes —
+           │     see the pairedItem decision below for why
+           │     ├─ hit  → Use Cached Evaluation, cache_hits++
+           │     └─ miss → Anthropic "Score Posting" (Haiku, real API call)
+           │                 ├─ Code: validate contract
+           │                 │     { match_score 0-100, should_apply, reason ≤300,
+           │                 │       missing_skills ≤5, deadline, eligibility }
+           │                 │     deadline/eligibility: extracted verbatim, never inferred
+           │                 │     ├─ valid   → Finalize From Attempt 1
+           │                 │     └─ invalid → Score Posting Retry (error appended)
+           │                 │                    → Validate Attempt 2 (final, either way)
+           │                 │                       invalid twice → evaluations.invalid=true,
+           │                 │                       never dropped
+           │                 └─► Merge "LLM Result" (2 in: valid-first-try / after-retry)
            │
-           ├─ Anthropic (Haiku, structured output)
-           ├─ Code: validate contract
-           │     { match_score 0-100, should_apply, reason ≤300, missing_skills ≤5 }
-           │     ├─ valid   → ↓
-           │     ├─ invalid → retry once with error appended
-           │     └─ invalid twice → flag evaluations.invalid → ALARM (never dropped)
+           ├─ Merge "For Persist" (2 in: Use Cached Evaluation / Merge LLM Result)
+           ├─ Postgres "Persist Evaluation": INSERT ... ON CONFLICT DO UPDATE
+           │     (never DO NOTHING here — must always return a row, cache hits included)
+           │     RETURNING the authoritative persisted row
            │
-           ├─ Postgres: INSERT evaluation (+ input/output tokens, cost_usd)
+           ├─ Code "Decide Notify": match_score ≥ preferences.notify.min_score
+           │     AND should_apply AND NOT invalid
            │
-           └─ IF match_score ≥ preferences.notify.min_score
+           └─ IF should_notify
                     │
                     └─► WF-3 notify
-                             ├─ Postgres INSERT notifications (posting_id, channel)
+                             ├─ Code "Prepare Notification": reshape for the insert
+                             ├─ Postgres "Insert Notification": INSERT notifications
+                             │     ON CONFLICT (posting_id, channel) DO NOTHING
                              │     UNIQUE(posting_id, channel) ← N4 lives here.
-                             │     conflict → already sent → STOP
-                             └─ Discord: embed with company, role, location,
-                                score, reason, missing skills, apply link
-                                + [Applied] [Not interested] [Details]
+                             │     conflict → 0 rows → downstream never fires → already sent, STOP
+                             │     (identity fields ride through as SELECT params here too)
+                             ├─ Code "Build Embed": formats deadline (YYYY-MM-DD → "30th
+                             │     Month, YYYY"; anything else, e.g. "Rolling", passes through)
+                             └─ Discord: embed with company, role, location, type, deadline,
+                                eligibility, score, reason, missing skills, apply link
+                                (buttons are Phase 5 — WF-3b)
 ```
 
 **Latency budget (N2):** poll cadence dominates. Hourly ATS polling puts p95 under ~1h; the pipeline
@@ -348,3 +370,61 @@ external API traffic and continuous writes; that's the user's call, not somethin
 
 **Next:** Phase 1 complete. Phase 2 (scoring + immediate Discord alerts) is next, gated on the Anthropic
 and Discord credentials being in the n8n store and the profile threshold being tuned.
+
+### 2026-08-14 — WF-2 and WF-3 built and verified end-to-end against real Postgres, real Anthropic, real Discord (continued) — Phase 2 complete
+
+**`workflows/wf2_score.json` — built, tested, correct. 24 nodes.** Execute Workflow Trigger (passthrough)
+→ Code "Request Preferences" → Execute Workflow "Call WF-L0" → Code "Prefilter" (reads the full posting
+batch via `$('When Executed by Another Workflow').all()`, since Call WF-L0 replaces the trigger's items
+with config; applies only the two deterministic checks — excluded role keyword, location outside the
+allowed set/remote/India — everything ambiguous passes) → Crypto "Hash Prompt Version" → IF "Prefilter
+Passed?" → Postgres "Check Cache" (LEFT JOIN, guaranteed one row, identity fields riding through as
+literal SELECT params — see the pairedItem decision) → IF "Cache Hit?" → either Code "Use Cached
+Evaluation" or Anthropic "Score Posting" → Code "Validate Attempt 1" → IF "Attempt 1 Valid?" → either Code
+"Finalize From Attempt 1" or (Anthropic "Score Posting Retry" → Code "Validate Attempt 2") → Merge "LLM
+Result" → Merge "For Persist" → Postgres "Persist Evaluation" (`ON CONFLICT ... DO UPDATE`, never `DO
+NOTHING` — a cache-hit row must still return exactly one row) → Code "Decide Notify" → IF "Should
+Notify?" → Execute Workflow "Call WF-3" → Merge "Post Notify" → Code "Tally" → Postgres "Write Run".
+
+**`workflows/wf3_notify.json` — built, tested, correct. 7 nodes.** Execute Workflow Trigger → Code
+"Prepare Notification" (reshapes, joins `missing_skills` into display text) → Postgres "Insert
+Notification" (`ON CONFLICT (posting_id, channel) DO NOTHING` — the *one* place in this project where a
+Postgres write deliberately has no guaranteed-row-back guarantee, because zero rows on conflict is the
+correct send-once behavior, not a bug) → Code "Build Embed" (formats `deadline`, builds the embed text) →
+Discord "Send Discord Embed" → Code "Tally" → Postgres "Write Run".
+
+**WF-1 wired to call WF-2**: `Dedup Upsert` now fans out to both the existing `Tally Results` path and a
+new `Build Score Payload` (pairs `was_inserted` flags against `Call WF-L1`'s full items by array position,
+same technique as the existing `Tally Results`) → `Call WF-2` (`mode: once`, batches every newly-inserted
+posting from one collection run into a single WF-2 execution and a single `runs` row).
+
+**Two pre-existing, silent bugs were found and fixed** that had nothing to do with today's new code — see
+`DECISIONS.md` for full writeups: (1) `$vars.PP_CONFIG_BASE_URL` resolves to `undefined` because n8n
+Variables is license-gated on this instance, meaning **every WF-L0 fetch since Phase 1 has been silently
+broken**, reverted to `$env` with `N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"`; (2) `Decide Outcome`'s
+`JSON.parse(resp.body)` never worked for a real fresh fetch because the parsed config actually lands under
+`resp.data` as an already-parsed object, same family of bug as WF-1's parsers but never applied to WF-L0
+itself. Both were masked in Phase 1 testing and only surfaced once Phase 2 needed a genuine fresh 200
+round-trip. **New bugs found in today's own code:** `$('NodeName').item.json` cross-references are
+unreliable specifically after an Anthropic node or through a Merge node with an unfired branch — fixed
+with `$('NodeName').all()[$itemIndex].json` throughout WF-2's LLM and notify-decision paths.
+
+**Testing method:** the CLI's `pinData`-on-a-trigger approach (used successfully for WF-L1's fixtures
+originally) turned out not to generalize — confirmed as CLI-`execute`-only, not a production issue, by
+building a parent test workflow that invokes WF-2 through a **real** `executeWorkflowTrigger` via a
+genuine `Execute Workflow` node call, exactly matching how WF-1 invokes WF-2 in production. That path
+worked on the first try once the two Phase-1-era bugs above were fixed, producing real Anthropic-scored
+evaluations (a FastAPI/Postgres/Redis/RAG posting scored 95, a Power BI/DAX/ETL posting scored 82) and
+real Discord messages in the configured channel, confirmed visually.
+
+**Verified for real, end to end:** prefilter correctly rejects an out-of-market posting and passes an
+in-market one; cache-hit path correctly skips a repeat LLM call and reuses the persisted score;
+`deadline`/`eligibility` extraction correctly pulls `"2026-09-30"` and a CGPA/graduation-year eligibility
+line verbatim from posting text and renders as `"30th September, 2026"` in the Discord embed; send-once
+verified by re-running the identical notify call and confirming zero rows, zero second Discord message,
+`notifications` count unchanged. All test workflows (11 of them, name-prefixed `_TEST`), test `postings`/
+`evaluations`/`notifications`/`runs` rows, and test JSON files were deleted after verification.
+
+**Phase 2 is complete.** Next: Phase 3 (WF-5 error handling, the zero-result alarm gap already noted for
+WF-1, config-fetch-failure alarm) — or, if the user prefers, activating WF-1 first to start real
+collection now that scoring and alerts actually work.

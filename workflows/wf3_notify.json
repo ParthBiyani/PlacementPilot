@@ -1,0 +1,227 @@
+{
+  "id": "9b3e7f42a8d15c60",
+  "name": "WF-3 notify",
+  "nodes": [
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        400
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000007",
+      "name": "Prepare Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn {\n  json: {\n    posting_id: j.posting_id,\n    company: j.company,\n    role: j.role,\n    location: j.location,\n    employment_type: j.employment_type,\n    apply_url: j.apply_url,\n    match_score: j.match_score,\n    reason: j.reason,\n    missing_skills_text: Array.isArray(j.missing_skills) ? j.missing_skills.join(', ') : '',\n    deadline: j.deadline || null,\n    eligibility: j.eligibility || null\n  }\n};"
+      }
+    },
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000002",
+      "name": "Insert Notification",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        640,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notifications (posting_id, channel) VALUES ($1, 'discord') ON CONFLICT (posting_id, channel) DO NOTHING RETURNING id, posting_id, $2::text AS company, $3::text AS role, $4::text AS location, $5::text AS employment_type, $6::text AS apply_url, $7::integer AS match_score, $8::text AS reason, $9::text AS missing_skills_text, $10::text AS deadline, $11::text AS eligibility",
+        "additionalFields": {
+          "queryParams": "posting_id,company,role,location,employment_type,apply_url,match_score,reason,missing_skills_text,deadline,eligibility"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000003",
+      "name": "Build Embed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function ordinal(n) {\n  const s = ['th', 'st', 'nd', 'rd'];\n  const v = n % 100;\n  return n + (s[(v - 20) % 10] || s[v] || s[0]);\n}\n\nfunction formatDeadline(raw) {\n  if (!raw) return 'Not stated';\n  // Only reformat if raw parses as an unambiguous ISO-like date (YYYY-MM-DD).\n  // Free text like 'Rolling' or 'Open until filled' must pass through as-is.\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)) return raw;\n  const d = new Date(raw + 'T00:00:00Z');\n  if (isNaN(d.getTime())) return raw;\n  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];\n  return `${ordinal(d.getUTCDate())} ${months[d.getUTCMonth()]}, ${d.getUTCFullYear()}`;\n}\n\nconst j = $json;\nconst score = j.match_score;\nconst color = score >= 90 ? 3066993 : (score >= 80 ? 15844367 : 15105570);\n\nconst lines = [\n  j.reason || '',\n  '',\n  `**Score:** ${score}/100`,\n  `**Location:** ${j.location || 'Not specified'}`,\n  `**Type:** ${j.employment_type || 'Not specified'}`,\n  `**Deadline:** ${formatDeadline(j.deadline)}`,\n  `**Eligibility:** ${j.eligibility || 'Not stated'}`\n];\nif (j.missing_skills_text) lines.push(`**Missing skills:** ${j.missing_skills_text}`);\nlines.push(`**Apply:** ${j.apply_url}`);\n\nreturn {\n  json: {\n    title: `${j.company} \u2014 ${j.role}`,\n    description: lines.join('\\n'),\n    color,\n    url: j.apply_url\n  }\n};"
+      }
+    },
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000004",
+      "name": "Send Discord Embed",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        400
+      ],
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "channel",
+        "guildId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1537760475398545418"
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1537760929264041984"
+        },
+        "content": "",
+        "embeds": {
+          "values": [
+            {
+              "inputMethod": "fields",
+              "title": "={{ $json.title }}",
+              "description": "={{ $json.description }}",
+              "color": "={{ $json.color }}",
+              "url": "={{ $json.url }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "discordBotApi": {
+          "id": "zuoho254CZQQSFRx",
+          "name": "Discord Bot account"
+        }
+      }
+    },
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000005",
+      "name": "Tally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const received = $('Prepare Notification').all().length;\nconst sent = $input.all().length;\nreturn [{ json: { received, sent } }];"
+      }
+    },
+    {
+      "id": "2b3c4d5e-0001-4000-8000-000000000006",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, notified) VALUES ('WF-3', now(), now(), $1) RETURNING id",
+        "additionalFields": {
+          "queryParams": "sent"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Prepare Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Notification": {
+      "main": [
+        [
+          {
+            "node": "Insert Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Notification": {
+      "main": [
+        [
+          {
+            "node": "Build Embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Embed": {
+      "main": [
+        [
+          {
+            "node": "Send Discord Embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Discord Embed": {
+      "main": [
+        [
+          {
+            "node": "Tally",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

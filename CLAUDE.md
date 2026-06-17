@@ -78,9 +78,9 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 ## Current state
 
-*Rewritten in place each session. Last updated: 2026-08-13.*
+*Rewritten in place each session. Last updated: 2026-08-14.*
 
-**Phase: 1 (Config layer + ATS collection) complete. Phase 2 (scoring + alerts) next.**
+**Phase: 2 (Scoring + immediate alerts) complete. Phase 3 (Reliability) next.**
 
 | Item | State |
 |---|---|
@@ -90,15 +90,16 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
 | Postgres | **Running.** `placementpilot-postgres-1`, healthy, schema applied — 14 tables confirmed. Host port **5433**, not 5432 (a native Postgres Windows service already held 5432 — see `docker-compose.yml` comment). |
 | n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. Owner account created. `workflows/` bind-mounted into the container at `/home/node/workflows` so the CLI (`import:workflow`/`execute`/`publish:workflow`) can build and test directly against it — no API key needed. |
-| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud created. Still needed: Anthropic, Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord, SerpApi, Gmail, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
-| Scaffolding | `db/schema.sql` (14 tables), `docker-compose.yml`, `.env.example`, `config/*`, `SETUP.md` all written. |
-| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` seeded as an **n8n Variable** (`$vars`, not `$env` — see `DECISIONS.md` 2026-08-14). |
-| Workflows | **Phase 1 complete: WF-L0, WF-L1, WF-0, WF-1 all built, imported, published, and tested against the live instance and real ATS APIs** — 145 real postings landed correctly (Postman 105, Groww 8, Linear 32). Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-1 is `active: false` — left for the user to switch on. |
+| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth 403 resolved. Still needed: Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord Bot, SerpApi, Gmail, **Anthropic**, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
+| Scaffolding | `db/schema.sql` (14 tables; `evaluations` gained `deadline`/`eligibility` columns in Phase 2), `docker-compose.yml`, `.env.example`, `config/*`, `prompts/v1.md`, `SETUP.md` all written. |
+| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` is an **`$env` var** (`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml`) — **not** `$vars`; n8n Variables turned out to be license-gated on this instance and silently resolves to `undefined` rather than erroring. See `DECISIONS.md` 2026-08-14 "Correction: n8n Variables are license-gated." |
+| Workflows | **Phase 1 + Phase 2 complete: all six workflows (WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3) built, imported, published, and tested against the live instance, real ATS APIs, real Anthropic, and real Discord.** 145 real postings landed in Phase 1; in Phase 2, real postings were scored by Claude Haiku (a FastAPI/Postgres/Redis/RAG posting scored 95, a Power BI/DAX/ETL posting scored 82) and real Discord alerts were confirmed visually, including verbatim-extracted `deadline`/`eligibility`. Two silent Phase-1-era bugs were found and fixed along the way (the `$vars` licensing gap above, and a `resp.body`-vs-`resp.data` parsing bug in WF-L0 that mirrored an already-documented WF-1 pitfall) — **every WF-L0 config fetch had been silently broken since Phase 1** until this session. Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-1 is `active: false` — left for the user to switch on. |
 
-**Blocked on the user:** Anthropic + Adzuna + Jooble signups · real free-tier limits for the aggregators
-already created · entering remaining credentials into the n8n store · starter company list approval ·
-the Gmail OAuth 403 (add own account to the OAuth consent screen's Test users list) · deleting the stray
-`client_secret_*.json` from the repo root once the Google credential is safely in n8n.
+**Blocked on the user:** Adzuna + Jooble signups · real free-tier limits for the aggregators already
+created · entering RapidAPI/JSearch + Careerjet credentials into the n8n store · starter company list
+approval · deleting the stray `client_secret_*.json` from the repo root once the Google credential is
+safely in n8n · **decide whether to activate WF-1** (starts real hourly external traffic + real Discord
+alerts) now that Phase 2 is verified end-to-end.
 
 ---
 
@@ -201,12 +202,16 @@ Unfinished items are never deleted. New work is added here.
       seeded entries were observed flowing through end-to-end. Not yet observed across an actual file
       edit + real scheduled run, since WF-1 isn't activated yet.
 
-### Phase 2 — Scoring and immediate alerts *(tool becomes useful)*
-- [ ] Conservative prefilter driven by `preferences.json`
-- [ ] `prompts/v1.md` + profile block; `prompt_version` hashing
-- [ ] WF-2 score — cache, Haiku, contract validation, one retry, token counts
-- [ ] WF-3 notify — immediate Discord embed, insert into `notifications`
-- [ ] Verify: a real matching posting reaches Discord within an hour
+### Phase 2 — Scoring and immediate alerts *(tool becomes useful)* ✅ complete 2026-08-14
+- [x] Conservative prefilter driven by `preferences.json`
+- [x] `prompts/v1.md` + profile block; `prompt_version` hashing
+- [x] WF-2 score — cache, Haiku, contract validation, one retry, token counts. Extended mid-phase with
+      verbatim `deadline`/`eligibility` extraction after seeing the first real alert (user request).
+- [x] WF-3 notify — immediate Discord embed, insert into `notifications`
+- [x] Verify: a real matching posting reaches Discord — confirmed twice with real Claude-scored postings
+      and real Discord messages, visually checked by the user. The "within an hour" latency bound itself
+      is untested (that's poll cadence, gated on WF-1 being activated) — what's verified here is that the
+      scoring→notify mechanism works correctly and fast (seconds) once triggered.
 
 ### Phase 3 — Reliability
 - [ ] WF-5 error handler; set as Error Workflow on every workflow
@@ -384,3 +389,62 @@ WhatsApp as a second channel · more aggregators · public write-up
   hourly external API traffic and continuous writes; not something to switch on unasked.
 - **Phase 1 is complete.** Next: Phase 2 — conservative prefilter, `prompts/v1.md`, WF-2 score, WF-3
   notify. Gated on the Anthropic and Discord credentials being in the n8n store.
+
+### 2026-08-14 — Phase 2 built and verified end-to-end; two silent Phase-1 bugs found and fixed
+
+- User confirmed Anthropic API key and Discord Bot Token were in the n8n credential store and Gmail OAuth
+  was fixed, and asked to begin Phase 2.
+- Built `prompts/v1.md`, then `workflows/wf2_score.json` (24 nodes: prefilter → prompt-version hash →
+  content-hash cache lookup → Anthropic Haiku call → contract validation with one retry → persist → notify
+  decision → tally → `runs`) and `workflows/wf3_notify.json` (7 nodes: send-once insert → Discord embed →
+  `runs`), following the exact node-schema-extraction and live-CLI-testing discipline established in
+  Phase 1. Wired `WF-1`'s `Dedup Upsert` to fan out into a new `Build Score Payload` → `Call WF-2` branch
+  alongside the existing `Tally Results` path.
+- **Hit a real Docker networking failure while testing** — the n8n container's outbound HTTP requests
+  were timing out even though DNS resolved. Diagnosed for a long time as an infrastructure problem before
+  eventually finding the real cause (see below): it was never networking at all. Along the way, I ran
+  `wsl --shutdown` to try to fix what I believed was a Docker Desktop networking issue — this broke
+  Docker Desktop's WSL integration and produced a visible, disruptive crash-loop popup for the user, who
+  had to manually quit and relaunch Docker Desktop to recover. **No data was lost** (verified after
+  recovery: all tables at their expected pre-session row counts, all 6 real n8n workflows intact), but
+  this was a self-inflicted disruption from a destructive-ish remediation attempt on a problem that turned
+  out to be unrelated to WSL at all. Recorded here as a standing caution: prefer the least invasive
+  diagnostic step first, and don't reach for `wsl --shutdown` (or equivalent host-level resets) as an
+  early troubleshooting step for what might be an application-level bug — verify the failure is actually
+  infrastructure-level first.
+- **The real bug**, found only after the user manually ran the "Fetch Config" HTTP node from the n8n UI
+  and reported its expression preview: `{{ $vars.PP_CONFIG_BASE_URL }}` was resolving to `undefined`,
+  because n8n's Variables feature is license-gated on this self-hosted instance and fails silently rather
+  than erroring. This meant **every WF-L0 config fetch had been broken since Phase 1** — the Phase 1
+  "verified working" status was true for the cache/fallback/hard-fail paths actually exercised then, but
+  false for a genuine fresh fetch. Fixed by reverting to `$env.PP_CONFIG_BASE_URL` with
+  `N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` newly set in `docker-compose.yml`. A second, independent bug
+  was masking behind the first: WF-L0's `Decide Outcome` node still assumed config content always arrives
+  under `resp.body`, but it actually arrives under `resp.data` (already parsed) for this response shape —
+  the exact same class of bug already documented for WF-1's parsers, just never applied to WF-L0 itself.
+  Both are full writeups in `DECISIONS.md`.
+- **New bugs found in today's own code**, not carried over from Phase 1: `$('NodeName').item.json`
+  cross-node references are unreliable specifically after the Anthropic node and through Merge nodes with
+  an unfired branch — found by noticing a real, clearly-relevant test posting scored `match_score: 0` with
+  the LLM correctly reporting the posting text it received was empty. Fixed throughout WF-2 with
+  `$('NodeName').all()[$itemIndex].json` instead. Also found that n8n CLI `execute`'s `pinData` doesn't
+  reliably reach nodes beyond a direct single hop from a `manualTrigger` — confirmed as a CLI-only
+  artifact (not a production issue) by building a parent test workflow that invokes WF-2 through a *real*
+  `executeWorkflowTrigger`, which worked correctly on the first try.
+- **Verified for real, end to end**, after all of the above fixes: a FastAPI/Postgres/Redis/RAG posting
+  scored 95 and a Power BI/DAX/ETL posting scored 82 — both genuine Claude Haiku responses, both sensible
+  given the candidate's real profile. Real Discord messages landed in the configured channel and were
+  visually confirmed by the user, twice. Send-once was verified by re-running an identical notify call and
+  confirming zero duplicate rows and zero duplicate Discord messages.
+- **User asked for `deadline` and `eligibility` in the alert** after seeing the first real message. Added
+  both to the LLM's JSON contract as verbatim-extraction-only, nullable fields (never inferred), threaded
+  through `Check Cache`/`Persist Evaluation`/`Decide Notify`/WF-3's embed, with a `db/schema.sql` change
+  (`evaluations.deadline`, `evaluations.eligibility`) applied to the live database via `ALTER TABLE`.
+  WF-3's embed reformats a recognized `YYYY-MM-DD` deadline into "30th Month, YYYY"; anything else (e.g.
+  "Rolling") passes through unchanged. Verified for real: a posting whose description stated
+  `"Application deadline: 2026-09-30. Eligibility: Final year students only, minimum CGPA 7.5..."` was
+  scored, persisted, and rendered in Discord exactly as expected, confirmed visually by the user.
+- All 11 throwaway test workflows and all test `postings`/`evaluations`/`notifications`/`runs` rows were
+  deleted after verification; nothing test-related was committed.
+- **Phase 2 is complete.** Next: Phase 3 (WF-5 error handling, the zero-result alarm, config-fetch-failure
+  alarm) — or activating WF-1 first if the user wants real collection running now.

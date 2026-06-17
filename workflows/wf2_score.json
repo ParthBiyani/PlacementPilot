@@ -1,0 +1,739 @@
+{
+  "id": "c4f8a29d1e6b3075",
+  "name": "WF-2 score",
+  "nodes": [
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        600
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000002",
+      "name": "Request Preferences",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        600
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { file: 'preferences.json' } }];"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000003",
+      "name": "Call WF-L0",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        600,
+        600
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "8e45da373fd94a90",
+        "mode": "once"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000004",
+      "name": "Prefilter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        600
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cfg = ($input.first().json && $input.first().json.config) || {};\nconst profile = cfg.profile || {};\nconst mustHave = cfg.must_have || {};\nconst exclude = cfg.exclude || {};\nconst notify = cfg.notify || {};\nconst minScore = (notify.min_score !== undefined && notify.min_score !== null) ? notify.min_score : 75;\n\nconst skillsText = Array.isArray(profile.skills) ? profile.skills.join(', ') : '';\nconst projectsText = Array.isArray(profile.projects) ? profile.projects.join('; ') : '';\n\nconst SYSTEM_MESSAGE = `You are screening job postings for a specific candidate. Score how well each posting matches their profile and preferences.\n\nCANDIDATE PROFILE:\n${profile.summary || ''}\n\nSkills: ${skillsText}\nNotable projects: ${projectsText}\nGraduating: ${profile.graduation_year || ''}\n\nRESPOND WITH STRICT JSON ONLY, matching exactly this shape, no other text, no markdown fences:\n{\n  \"match_score\": <integer 0-100>,\n  \"should_apply\": <boolean>,\n  \"reason\": \"<string, at most 300 characters>\",\n  \"missing_skills\": [\"<string>\", ... at most 5 items],\n  \"deadline\": \"<string, exactly as stated in the posting (e.g. 'Rolling', '2026-09-15'), or null if the posting does not state one>\",\n  \"eligibility\": \"<string, exactly as stated in the posting (e.g. 'Final year students, CGPA 7.0+'), or null if the posting does not state one>\"\n}\n\nScoring guidance:\n- match_score reflects genuine fit: skills overlap, seniority match, domain relevance.\n- should_apply is true only if match_score suggests a real, actionable opportunity.\n- reason is a concise, specific justification a human could act on in five seconds.\n- missing_skills lists skills the posting wants that the candidate's profile doesn't show; empty array if none.\n- deadline and eligibility are extracted, never inferred: use null unless the posting text explicitly states one. Do not guess a deadline from posted_date, and do not infer eligibility from role seniority.\n- When genuinely uncertain, score toward inclusion rather than exclusion -- a missed good match is a worse outcome than an extra alert.`;\n\nconst roleExcludes = (exclude.role_keywords || []).map(s => s.toLowerCase());\nconst companyExcludes = (exclude.companies || []).map(s => s.toLowerCase());\nconst allowedLocations = (mustHave.locations || []).map(s => s.toLowerCase());\nconst remoteOk = mustHave.remote_ok !== false;\n\nfunction evaluatePrefilter(posting) {\n  const role = (posting.role || '').toLowerCase();\n  const company = (posting.company || '').toLowerCase();\n  const location = (posting.location || '').toLowerCase().trim();\n\n  for (const kw of roleExcludes) {\n    if (kw && role.includes(kw)) return { passed: false, reason: 'excluded role keyword: ' + kw };\n  }\n  for (const kw of companyExcludes) {\n    if (kw && company.includes(kw)) return { passed: false, reason: 'excluded company: ' + kw };\n  }\n  if (location) {\n    const isRemote = remoteOk && location.includes('remote');\n    const isAllowedCity = allowedLocations.some(loc => location.includes(loc));\n    const mentionsIndia = location.includes('india');\n    if (!isRemote && !isAllowedCity && !mentionsIndia) {\n      return { passed: false, reason: 'location outside allowed set: ' + posting.location };\n    }\n  }\n  return { passed: true, reason: null };\n}\n\nconst postings = $('When Executed by Another Workflow').all();\nconst results = [];\nfor (const item of postings) {\n  const p = item.json;\n  const verdict = evaluatePrefilter(p);\n  const userMessage = `COMPANY: ${p.company}\nROLE: ${p.role}\nLOCATION: ${p.location || 'Not specified'}\nEMPLOYMENT TYPE: ${p.employment_type || 'Not specified'}\n\nDESCRIPTION:\n${p.description || ''}`;\n\n  results.push({\n    json: {\n      posting_id: p.id,\n      content_hash: p.content_hash,\n      company: p.company,\n      role: p.role,\n      location: p.location || null,\n      employment_type: p.employment_type || null,\n      apply_url: p.apply_url,\n      source: p.source,\n      prefilter_passed: verdict.passed,\n      prefilter_reason: verdict.reason,\n      system_message: SYSTEM_MESSAGE,\n      user_message: userMessage,\n      notify_min_score: minScore,\n      model: 'claude-haiku-4-5-20251001',\n      prompt_version_input: SYSTEM_MESSAGE\n    }\n  });\n}\nreturn results;"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000005",
+      "name": "Hash Prompt Version",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        600
+      ],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "binaryData": false,
+        "value": "={{ $json.prompt_version_input }}",
+        "dataPropertyName": "prompt_version",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000006",
+      "name": "Prefilter Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.prefilter_passed }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000007",
+      "name": "Check Cache",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        480
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT $1::text AS content_hash, $2::text AS prompt_version, $3::text AS model, $4::text AS posting_id, $5::text AS company, $6::text AS role, $7::text AS location, $8::text AS employment_type, $9::text AS apply_url, $10::text AS source, $11::numeric AS notify_min_score, $12::text AS system_message, $13::text AS user_message, e.match_score AS cached_match_score, e.should_apply AS cached_should_apply, e.reason AS cached_reason, e.missing_skills AS cached_missing_skills, e.deadline AS cached_deadline, e.eligibility AS cached_eligibility, e.invalid AS cached_invalid, (e.content_hash IS NOT NULL) AS cache_hit FROM (SELECT 1) AS dummy LEFT JOIN evaluations e ON e.content_hash = $1 AND e.prompt_version = $2 AND e.model = $3",
+        "additionalFields": {
+          "queryParams": "content_hash,prompt_version,model,posting_id,company,role,location,employment_type,apply_url,source,notify_min_score,system_message,user_message"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000008",
+      "name": "Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.cache_hit }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000009",
+      "name": "Use Cached Evaluation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn {\n  json: {\n    content_hash: j.content_hash,\n    prompt_version: j.prompt_version,\n    model: j.model,\n    posting_id: j.posting_id,\n    company: j.company,\n    role: j.role,\n    location: j.location,\n    employment_type: j.employment_type,\n    apply_url: j.apply_url,\n    source: j.source,\n    notify_min_score: j.notify_min_score,\n    match_score: j.cached_match_score,\n    should_apply: j.cached_should_apply,\n    reason: j.cached_reason,\n    missing_skills: JSON.stringify(j.cached_missing_skills || []),\n    deadline: j.cached_deadline || null,\n    eligibility: j.cached_eligibility || null,\n    input_tokens: 0,\n    output_tokens: 0,\n    cost_usd: 0,\n    invalid: j.cached_invalid,\n    cache_hit: true\n  }\n};"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-00000000000a",
+      "name": "Score Posting",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        600
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "mode": "id",
+          "value": "claude-haiku-4-5-20251001"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.user_message }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {
+          "system": "={{ $json.system_message }}",
+          "maxTokens": 500,
+          "temperature": 0
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "QLxm16bJPwDvuMtl",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-00000000000b",
+      "name": "Validate Attempt 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        600
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!Number.isInteger(parsed.match_score) || parsed.match_score < 0 || parsed.match_score > 100) errors.push('match_score must be an integer 0-100');\n  if (typeof parsed.should_apply !== 'boolean') errors.push('should_apply must be a boolean');\n  if (typeof parsed.reason !== 'string' || parsed.reason.length > 300) errors.push('reason must be a string of at most 300 characters');\n  if (!Array.isArray(parsed.missing_skills) || parsed.missing_skills.length > 5 || !parsed.missing_skills.every(s => typeof s === 'string')) errors.push('missing_skills must be an array of at most 5 strings');\n  if (parsed.deadline !== null && parsed.deadline !== undefined && typeof parsed.deadline !== 'string') errors.push('deadline must be a string or null');\n  if (parsed.eligibility !== null && parsed.eligibility !== undefined && typeof parsed.eligibility !== 'string') errors.push('eligibility must be a string or null');\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Check Cache').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst usage = resp.usage || {};\n\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    content_hash: ctx.content_hash,\n    prompt_version: ctx.prompt_version,\n    model: ctx.model,\n    posting_id: ctx.posting_id,\n    company: ctx.company,\n    role: ctx.role,\n    location: ctx.location,\n    employment_type: ctx.employment_type,\n    apply_url: ctx.apply_url,\n    source: ctx.source,\n    notify_min_score: ctx.notify_min_score,\n    system_message: ctx.system_message,\n    user_message: ctx.user_message,\n    valid: result.ok,\n    match_score: result.ok ? result.parsed.match_score : null,\n    should_apply: result.ok ? result.parsed.should_apply : null,\n    reason: result.ok ? result.parsed.reason : null,\n    missing_skills: result.ok ? result.parsed.missing_skills : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    eligibility: result.ok ? (result.parsed.eligibility || null) : null,\n    input_tokens: usage.input_tokens || 0,\n    output_tokens: usage.output_tokens || 0,\n    retry_user_message: result.ok ? null : (ctx.user_message + '\\n\\nYour previous response was invalid and could not be used: ' + result.error + '\\nRespond again with STRICT JSON ONLY, matching exactly the required shape, no other text, no markdown fences.')\n  }\n};"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-00000000000c",
+      "name": "Attempt 1 Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        2360,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-00000000000d",
+      "name": "Finalize From Attempt 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2580,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst costUsd = (j.input_tokens || 0) / 1e6 * 1.00 + (j.output_tokens || 0) / 1e6 * 5.00;\nreturn {\n  json: {\n    content_hash: j.content_hash,\n    prompt_version: j.prompt_version,\n    model: j.model,\n    posting_id: j.posting_id,\n    company: j.company,\n    role: j.role,\n    location: j.location,\n    employment_type: j.employment_type,\n    apply_url: j.apply_url,\n    source: j.source,\n    notify_min_score: j.notify_min_score,\n    match_score: j.match_score,\n    should_apply: j.should_apply,\n    reason: j.reason,\n    missing_skills: JSON.stringify(j.missing_skills || []),\n    deadline: j.deadline || null,\n    eligibility: j.eligibility || null,\n    input_tokens: j.input_tokens,\n    output_tokens: j.output_tokens,\n    cost_usd: Math.round(costUsd * 1e6) / 1e6,\n    invalid: false,\n    cache_hit: false\n  }\n};"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-00000000000e",
+      "name": "Score Posting Retry",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        2580,
+        720
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "mode": "id",
+          "value": "claude-haiku-4-5-20251001"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.retry_user_message }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {
+          "system": "={{ $json.system_message }}",
+          "maxTokens": 500,
+          "temperature": 0
+        }
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "QLxm16bJPwDvuMtl",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-00000000000f",
+      "name": "Validate Attempt 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        720
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!Number.isInteger(parsed.match_score) || parsed.match_score < 0 || parsed.match_score > 100) errors.push('match_score must be an integer 0-100');\n  if (typeof parsed.should_apply !== 'boolean') errors.push('should_apply must be a boolean');\n  if (typeof parsed.reason !== 'string' || parsed.reason.length > 300) errors.push('reason must be a string of at most 300 characters');\n  if (!Array.isArray(parsed.missing_skills) || parsed.missing_skills.length > 5 || !parsed.missing_skills.every(s => typeof s === 'string')) errors.push('missing_skills must be an array of at most 5 strings');\n  if (parsed.deadline !== null && parsed.deadline !== undefined && typeof parsed.deadline !== 'string') errors.push('deadline must be a string or null');\n  if (parsed.eligibility !== null && parsed.eligibility !== undefined && typeof parsed.eligibility !== 'string') errors.push('eligibility must be a string or null');\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Validate Attempt 1').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst usage = resp.usage || {};\n\nconst result = tryValidate(rawText);\n\nconst totalInputTokens = (ctx.input_tokens || 0) + (usage.input_tokens || 0);\nconst totalOutputTokens = (ctx.output_tokens || 0) + (usage.output_tokens || 0);\nconst costUsd = totalInputTokens / 1e6 * 1.00 + totalOutputTokens / 1e6 * 5.00;\n\nreturn {\n  json: {\n    content_hash: ctx.content_hash,\n    prompt_version: ctx.prompt_version,\n    model: ctx.model,\n    posting_id: ctx.posting_id,\n    company: ctx.company,\n    role: ctx.role,\n    location: ctx.location,\n    employment_type: ctx.employment_type,\n    apply_url: ctx.apply_url,\n    source: ctx.source,\n    notify_min_score: ctx.notify_min_score,\n    match_score: result.ok ? result.parsed.match_score : null,\n    should_apply: result.ok ? result.parsed.should_apply : false,\n    reason: result.ok ? result.parsed.reason : ('Invalid LLM output after retry: ' + result.error).slice(0, 300),\n    missing_skills: JSON.stringify(result.ok ? result.parsed.missing_skills : []),\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    eligibility: result.ok ? (result.parsed.eligibility || null) : null,\n    input_tokens: totalInputTokens,\n    output_tokens: totalOutputTokens,\n    cost_usd: Math.round(costUsd * 1e6) / 1e6,\n    invalid: !result.ok,\n    cache_hit: false\n  }\n};"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000010",
+      "name": "Merge LLM Result",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3020,
+        610
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000011",
+      "name": "Merge For Persist",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3240,
+        480
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000012",
+      "name": "Persist Evaluation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        3460,
+        480
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO evaluations (content_hash, prompt_version, model, match_score, should_apply, reason, missing_skills, deadline, eligibility, input_tokens, output_tokens, cost_usd, invalid) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13) ON CONFLICT (content_hash, prompt_version, model) DO UPDATE SET created_at = evaluations.created_at RETURNING content_hash, prompt_version, model, match_score, should_apply, reason, missing_skills, deadline, eligibility, invalid",
+        "additionalFields": {
+          "queryParams": "content_hash,prompt_version,model,match_score,should_apply,reason,missing_skills,deadline,eligibility,input_tokens,output_tokens,cost_usd,invalid"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000013",
+      "name": "Decide Notify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        480
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const persisted = $json;\nconst ctx = $('Merge For Persist').all()[$itemIndex].json;\n\nconst threshold = (ctx.notify_min_score !== undefined && ctx.notify_min_score !== null) ? ctx.notify_min_score : 75;\nconst shouldNotify = !persisted.invalid && persisted.should_apply === true && typeof persisted.match_score === 'number' && persisted.match_score >= threshold;\n\nreturn {\n  json: {\n    posting_id: ctx.posting_id,\n    company: ctx.company,\n    role: ctx.role,\n    location: ctx.location,\n    employment_type: ctx.employment_type,\n    apply_url: ctx.apply_url,\n    match_score: persisted.match_score,\n    reason: persisted.reason,\n    missing_skills: persisted.missing_skills,\n    deadline: persisted.deadline,\n    eligibility: persisted.eligibility,\n    invalid: persisted.invalid,\n    cache_hit: ctx.cache_hit,\n    input_tokens: ctx.input_tokens,\n    output_tokens: ctx.output_tokens,\n    cost_usd: ctx.cost_usd,\n    should_notify: shouldNotify\n  }\n};"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000014",
+      "name": "Should Notify?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        3900,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.should_notify }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000015",
+      "name": "Call WF-3",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4120,
+        400
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "9b3e7f42a8d15c60",
+        "mode": "once"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000016",
+      "name": "Merge Post Notify",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4340,
+        480
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000017",
+      "name": "Tally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        480
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const total = $('Hash Prompt Version').all().length;\nconst persistedItems = $('Merge For Persist').all();\nconst prefiltered = total - persistedItems.length;\n\nlet cacheHits = 0;\ntry { cacheHits = $('Use Cached Evaluation').all().length; } catch (e) { cacheHits = 0; }\n\nlet llmCalls = 0;\ntry { llmCalls = $('Score Posting').all().length; } catch (e) { llmCalls = 0; }\n\nlet notified = 0;\ntry { notified = $('Call WF-3').all().length; } catch (e) { notified = 0; }\n\nconst costUsd = persistedItems.reduce((sum, i) => sum + (i.json.cost_usd || 0), 0);\n\nreturn [{\n  json: {\n    total,\n    prefiltered,\n    cache_hits: cacheHits,\n    llm_calls: llmCalls,\n    notified,\n    cost_usd: Math.round(costUsd * 1e6) / 1e6\n  }\n}];"
+      }
+    },
+    {
+      "id": "1a2b3c4d-0001-4000-8000-000000000018",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        4780,
+        480
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, prefiltered, llm_calls, cache_hits, notified, cost_usd) VALUES ('WF-2', now(), now(), $1, $2, $3, $4, $5, $6) RETURNING id",
+        "additionalFields": {
+          "queryParams": "total,prefiltered,llm_calls,cache_hits,notified,cost_usd"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Request Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Preferences": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L0": {
+      "main": [
+        [
+          {
+            "node": "Prefilter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prefilter": {
+      "main": [
+        [
+          {
+            "node": "Hash Prompt Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hash Prompt Version": {
+      "main": [
+        [
+          {
+            "node": "Prefilter Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prefilter Passed?": {
+      "main": [
+        [
+          {
+            "node": "Check Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Cache": {
+      "main": [
+        [
+          {
+            "node": "Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "Use Cached Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Score Posting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Posting": {
+      "main": [
+        [
+          {
+            "node": "Validate Attempt 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Attempt 1": {
+      "main": [
+        [
+          {
+            "node": "Attempt 1 Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attempt 1 Valid?": {
+      "main": [
+        [
+          {
+            "node": "Finalize From Attempt 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Score Posting Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Posting Retry": {
+      "main": [
+        [
+          {
+            "node": "Validate Attempt 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize From Attempt 1": {
+      "main": [
+        [
+          {
+            "node": "Merge LLM Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Attempt 2": {
+      "main": [
+        [
+          {
+            "node": "Merge LLM Result",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Use Cached Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Merge For Persist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge LLM Result": {
+      "main": [
+        [
+          {
+            "node": "Merge For Persist",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge For Persist": {
+      "main": [
+        [
+          {
+            "node": "Persist Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Decide Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Notify": {
+      "main": [
+        [
+          {
+            "node": "Should Notify?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Notify?": {
+      "main": [
+        [
+          {
+            "node": "Call WF-3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Post Notify",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Call WF-3": {
+      "main": [
+        [
+          {
+            "node": "Merge Post Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Post Notify": {
+      "main": [
+        [
+          {
+            "node": "Tally",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

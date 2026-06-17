@@ -334,3 +334,167 @@ Groww (8), Linear via Ashby (32) — 145 real, correctly-parsed, correctly-dedup
 duplicate primary keys, `runs` rows with accurate fetched/new/deduped counts per provider, and Lever
 (Mistral, genuinely zero live postings) handled without error. All test data and the throwaway test
 workflow were deleted after verification.
+
+---
+
+## 2026-08-14 — Correction: n8n Variables are license-gated on this instance; back to `$env`, deliberately unblocked
+
+**Context.** The "Two HTTP Request pitfalls" entry above documented switching from `$env` to `$vars`
+(n8n's Variables feature) after `$env` access from expressions threw `access to env vars denied`. That
+fix was never validated end-to-end — it silently resolves to `undefined` rather than erroring, so nothing
+surfaced the problem until Phase 2 testing, weeks of session-time later.
+
+**Decision.** Reverted to `$env.PP_CONFIG_BASE_URL`, deliberately unblocked via
+`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml` — a real, documented n8n security setting,
+unrelated to the Variables feature.
+
+**Why.** Discovered live: Settings → Variables in this n8n instance shows "Upgrade to unlock variables" —
+Variables is gated behind a paid plan on this edition, and a gated Variable doesn't throw when read from
+an expression, it silently resolves to `undefined`. `{{ $vars.PP_CONFIG_BASE_URL }}/{{ $json.file }}`
+therefore evaluated to the literal string `undefined/preferences.json` on **every single run since Phase
+1** — WF-L0 has been fetching a broken URL this entire time. It "worked" in Phase 1 testing only because
+that testing happened not to exercise a genuine fresh-200 fetch against the real configured value all the
+way through (see the next entry — a second, independent bug was also masking this one). This is the most
+consequential bug found this session: it silently invalidated the earlier decision's stated fix without
+ever surfacing an error, in a way that would have made the *entire system* non-functional in production.
+
+**Rejected alternatives.** Upgrading the n8n plan — out of scope/cost for a $0/month tool (P4). Hardcoding
+the URL directly into `wf_l0_config.json`'s HTTP node — simpler, but loses the "one place to configure, no
+workflow edits" property `$env`/`$vars` both provide; `$env` unblocked achieves the same portability goal
+`$vars` was meant to, without the licensing dependency.
+
+**Consequences.** `N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` and `PP_CONFIG_BASE_URL: ${PP_CONFIG_BASE_URL}`
+are now standing entries in `docker-compose.yml`'s n8n environment block, with an inline comment recording
+both this and the original `$env`-denied finding so nobody swings back to `$vars` without first confirming
+Variables is unlocked on whatever instance is running. **Standing rule going forward: never trust a
+config-read mechanism (`$vars`, `$env`, or otherwise) that "works" without a live, end-to-end 200-status
+test through the real fetch path** — a silently-undefined read is indistinguishable from a correct one
+until something downstream fails loudly, and here it took until Phase 2 to notice.
+
+---
+
+## 2026-08-14 — WF-L0's `Decide Outcome` had the same body/data pitfall as WF-1, undetected since Phase 1
+
+**Context.** "Three more pitfalls found building WF-1" (above) documented that a JSON-content-type HTTP
+response lands under `resp.data`, not `resp.body`, and fixed every WF-1 parser accordingly. WF-L0's own
+`Decide Outcome` node — built earlier the same day — was never updated to match, because at the time
+GitHub's `text/plain` response genuinely did populate `resp.body` as a string. Live testing during Phase 2
+found `resp.body` was `undefined` and the actual content was sitting under `resp.data` as an
+**already-parsed object** — contradicting the WF-1 finding's own claim that GitHub raw specifically lands
+under `body`.
+
+**Decision.** Applied the same `resp.body !== undefined ? resp.body : resp.data` fallback to
+`Decide Outcome`, with `typeof raw === 'string' ? JSON.parse(raw) : raw` guarding the parse step (since
+`resp.data` can already be a parsed object here, unlike the always-string `resp.body` case WF-1's finding
+was originally written for).
+
+**Why.** Whatever actually determines the body/data split (server `Content-Type`, n8n's own JSON
+auto-detection, or some combination) is not stable enough to hardcode a per-source assumption — the same
+GitHub endpoint that put content under `body` when WF-1 was first tested put it under `data`
+(pre-parsed) when WF-L0 was retested later. Combined with the `$vars` bug above, `Decide Outcome`'s
+`JSON.parse(resp.body)` was throwing on `undefined` on **every real fetch**, always landing in
+`hard_fail_alarm` or `fallback_alarm` — masked because Phase 1's own WF-L0 testing happened not to isolate
+a genuine fresh-200-with-real-URL case cleanly from the cache/fallback paths.
+
+**Consequences.** The body-or-data fallback with a parse-only-if-string guard is now mandatory for **every**
+HTTP Request node in this project, full stop — not just WF-1's provider parsers. `WF-L0`'s "built, tested,
+correct" status recorded in `FLOW.md` on this date was accurate for the paths actually exercised then, but
+wrong for a genuine fresh fetch specifically; this entry is the correction, not a retroactive edit of that
+one.
+
+---
+
+## 2026-08-14 — pairedItem cross-node references are unreliable through AI/LangChain nodes and Merge nodes; use index lookups instead
+
+**Context.** WF-2's `Validate Attempt 1`/`2` and `Decide Notify` code nodes recovered per-item context via
+`$('NodeName').item.json`, matching a pattern already proven reliable earlier this session through
+Postgres nodes (WF-L0's `Finalize` → `Decide Outcome`; WF-1's `Parse Greenhouse` → `Get Active ATS
+Sources`). Live multi-item testing showed this pattern silently returning the *wrong or empty* item
+specifically when the immediately-preceding node was the **Anthropic** (`@n8n/n8n-nodes-langchain.anthropic`)
+node, or when resolving back through a **Merge** node whose other input branch never fired in that
+execution — which is the normal case, since any given scoring batch has *some* cache hits and *some*
+misses, so one Merge input is always empty.
+
+**Decision.** Replaced every `$('NodeName').item.json` reference downstream of an Anthropic node or a
+Merge node with `$('NodeName').all()[$itemIndex].json` — positional lookup by the current item's own
+index, which has no dependency on pairedItem metadata at all. Left `.item.json` in place only where
+already proven safe: immediately after a Postgres node, no Merge in between.
+
+**Why.** The failure is silent, not thrown: the reference resolves to an item with the right *shape* but
+wrong or missing *values* (fields present as `undefined`), so a perfectly-valid LLM JSON response can look
+completely normal while scoring a blank posting. First caught by noticing a real, highly-relevant test
+posting scored `match_score: 0` with the LLM's own complaint that the posting was empty — the LLM was
+correct; `ctx.user_message` genuinely was blank at generation time. Index-based lookup is strictly more
+reliable than name-plus-pairedItem resolution because it has no dependency on any given node type
+correctly tagging or propagating pairedItem — it just reads position N of a node's own recorded output.
+
+**Consequences.** Standing rule for every future workflow: **after an AI/LangChain node, or after a Merge
+node, use `$('NodeName').all()[$itemIndex]`, never `.item`.** Treat `.item.json` as trustworthy only after
+a node type already proven safe in a straight-line chain — Postgres is the only entry on that allowlist so
+far; nothing else should be assumed safe by default. WF-2's `Tally` node also gained defensive `try/catch`
+guards around every `$('X').all()` count for a branch that may legitimately have zero items in a given run
+(cache-hits-only or misses-only batches are both normal), matching the pattern already used for
+`Call WF-3`.
+
+---
+
+## 2026-08-14 — n8n CLI `execute`'s pinData does not reliably reach nodes beyond a direct single hop
+
+**Context.** Testing WF-2/WF-3 needed fake input data injected at a manualTrigger substituted for the real
+trigger — WF-L0/WF-1's earlier tests never actually needed this (they hardcoded return values in a Code
+node, or read real seeded Postgres rows), so this is a genuinely new finding, distinct from the earlier
+"CLI execute ignores pinned trigger data" note about `executeWorkflowTrigger`. Setting `pinData` on a
+`manualTrigger` node and reading it via `$('TriggerName').all()` from a downstream node — even a
+directly-connected one, even through nothing but a passthrough Code node — consistently returned
+`[{json: {}}]`, discarding the real pinned values entirely.
+
+**Decision.** Stopped relying on `pinData` for CLI testing altogether. Fake test input now comes from a
+dedicated Code node (`return postings.map(p => ({json: p}))` or equivalent) spliced directly into the main
+execution chain — not a parallel branch, see the ordering pitfall below — referenced by name from wherever
+the real trigger would normally be referenced.
+
+**Why.** Confirmed CLI-testing-only, not a production issue: building a parent workflow that invokes WF-2
+through a **real** `executeWorkflowTrigger` via a genuine `Execute Workflow` node call — exactly how WF-1
+invokes WF-2 in production — resolved `$('When Executed by Another Workflow').all()` correctly on the
+first try, with real extracted scores landing correctly in Postgres. The bug is specifically in how the
+CLI's `execute` command materializes `pinData` for a trigger node, not in n8n's real execution engine.
+
+**A second, related ordering pitfall found in the same testing:** a Code node placed on a *parallel*
+branch off the trigger (rather than spliced into the main chain) is not guaranteed to have executed yet
+when a sibling branch's node references it by name — `Node 'X' hasn't been executed`, even though X is
+directly connected to the trigger. Splicing the seed node into the main chain (trigger → seed → rest of
+the real chain) fixes this deterministically, since n8n then has an explicit edge establishing order.
+
+**Consequences.** Standing pattern for every future CLI test needing fake input data: a hardcoded Code
+node spliced into the main chain, never `pinData` on a trigger, and never a same-trigger parallel branch
+when a downstream node will reference the seed node by name.
+
+---
+
+## 2026-08-14 — Score contract extended with `deadline`/`eligibility`, extracted verbatim, never inferred
+
+**Context.** After the first real Discord alert landed (Phase 2's first live end-to-end test), the owner
+asked for the application deadline and eligibility criteria in the message — information that exists in a
+posting's free-text description when the poster bothered to state it, but has no dedicated field in any
+ATS API this project collects from.
+
+**Decision.** Added `deadline` and `eligibility` to the LLM's JSON contract (nullable strings —
+`prompts/v1.md`, `evaluations.deadline`/`evaluations.eligibility`), with the prompt explicit that both
+must be **extracted verbatim from the posting text, never inferred** — no guessing a deadline from
+`posted_date`, no inferring eligibility from role seniority. WF-3's Discord embed reformats a recognized
+`YYYY-MM-DD` deadline into a readable form (`30th September, 2026`) and passes anything else (e.g.
+`"Rolling"`) through unchanged.
+
+**Why.** Matches the project's existing `missing_skills`-style pattern — structured extraction bolted onto
+the scoring call rather than a separate LLM pass, since it's the same request already reading the full
+description. Verbatim-only avoids the LLM inventing a plausible-sounding deadline or eligibility bar that
+isn't actually stated, which would be actively worse than showing "Not stated."
+
+**Consequences.** This changes the rendered prompt template text, which silently bumps `prompt_version`
+(the hash includes the full template) — by design, per the existing prompt-version decision above: every
+cached score under the old contract shape is correctly treated as stale and re-scored, no manual cache
+bust needed. `db/schema.sql`'s `evaluations` table gained two nullable `TEXT` columns; the live database
+was migrated with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` rather than re-applying `schema.sql`, since
+that file's `CREATE TABLE IF NOT EXISTS` statements don't retroactively add columns to a table that
+already exists — worth remembering for any future schema change against a database that already holds
+data.
