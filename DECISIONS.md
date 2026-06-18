@@ -498,3 +498,145 @@ was migrated with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` rather than re-appl
 that file's `CREATE TABLE IF NOT EXISTS` statements don't retroactively add columns to a table that
 already exists — worth remembering for any future schema change against a database that already holds
 data.
+
+---
+
+## 2026-08-14 — `executeWorkflow` node's `workflowId` needs the resource-locator shape, not a bare string
+
+**Context.** Phase 3 testing hit a wall on WF-0: `Call WF-L1` failed every real, non-CLI execution with
+"No information about the workflow to execute found. Please provide either the 'id' or 'code'!" — despite
+`source: database` being set and a bare workflow ID string being present in the node's parameters. This
+looked identical to an n8n publish/activation problem, and a long investigation went down that path first
+(see the dead-end entry immediately below) before the real cause turned up in n8n's own source inside the
+container: `ExecuteWorkflow/GenericFunctions.js`'s `getWorkflowInfo()` does
+`if (nodeVersion === 1) { workflowInfo.id = this.getNodeParameter('workflowId', itemIndex); } else { const
+{ value } = this.getNodeParameter('workflowId', itemIndex, {}); workflowInfo.id = value; }`. Every
+`Call WF-*` node in this project is `typeVersion: 1.2`, so it takes the `else` branch — destructuring
+`value` out of a bare string yields `undefined`, exactly matching the observed error.
+
+**Decision.** Changed every `executeWorkflow` node's `workflowId` parameter from a bare ID string to the
+resource-locator object the node actually expects: `{"__rl": true, "value": "<id>", "mode": "id"}`. Six
+occurrences across three files: WF-0→WF-L1, WF-1→WF-L0/WF-L1/WF-2, WF-2→WF-L0/WF-3. WF-L0's new fallback
+alarm call to WF-5 (added the same session, see further below) was built with the correct shape from the
+start.
+
+**Why.** This is the only change that mattered — no publish/activation state, no n8n config flag, and no
+restart-timing issue was ever actually involved. Verified directly: after the fix (with no other change),
+a real UI-triggered execution of WF-0 correctly showed `Call WF-L1 — Workflow: 773d1f4a0f6b4bf7` and
+completed successfully end to end.
+
+**Consequences.** Every future `executeWorkflow` node in this project (WF-1b/WF-1c/WF-1d, WF-6, anything
+else added later) must use the resource-locator shape for `workflowId`, never a bare string, regardless of
+whether the ID came from a hardcoded value or an expression. This is now the standing pattern, alongside
+the existing SHA-256/Crypto-node and `$env`-not-`$vars` patterns.
+
+**Open question, deliberately not resolved:** it's unclear whether this bug is new (introduced by an n8n
+version bump between Phase 1 and this session, silently breaking previously-working calls) or whether it
+was present all along and Phase 1/2's "verified" `source: database` calls happened to route around it —
+e.g. via CLI executions or manual clicks that exercise different code paths than a real chained
+sub-workflow call. No evidence was found either way, and it isn't worth chasing further now that the fix
+is in and independently re-verified this session; noted here only so a future "wait, didn't we already
+test this?" moment isn't mistaken for a regression.
+
+---
+
+## 2026-08-14 — Dead end: `workflow_published_version` / publication outbox is not what needed fixing
+
+**Context.** Recorded so nobody re-investigates this path on a future "Execute Workflow can't find the
+sub-workflow" error. Before finding the real cause above, this session spent a long time inspecting n8n's
+newer dual publishing system: `workflow_entity.active`/`activeVersionId` (what the CLI's
+`publish:workflow` command sets) is architecturally separate from a `workflow_published_version` table
+that a `WorkflowPublishedDataService` queries at runtime — with an outbox table
+(`workflow_publication_outbox`) apparently meant to populate it asynchronously via a
+`WorkflowPublicationApplier`.
+
+**What was actually true, read directly from n8n's own source in the running container:** this entire
+second system is gated behind `N8N_USE_WORKFLOW_PUBLICATION_SERVICE` (config key
+`workflows.useWorkflowPublicationService`), **which defaults to `false` and is not set anywhere in this
+project's `docker-compose.yml`.** With it off — the actual state of this instance — every code path that
+matters (`source: database` Execute Workflow resolution in `workflow-execute-additional-data.js`'s
+`getPublishedWorkflowData()`, and error-workflow loading in `workflow-execution.service.js`'s
+`loadErrorWorkflowData()`) falls through to the legacy branch, which needs only
+`workflow_entity.activeVersionId` pointing at a valid `workflow_history` row — exactly what the CLI's
+`publish:workflow` command already sets correctly. The empty `workflow_published_version` table observed
+throughout the investigation was never the problem; it's simply unused while the flag is off.
+
+**Consequences.** Do not chase `workflow_published_version` / the publication outbox / "is it *really*
+published" on this instance again — the CLI's existing `import:workflow` → `publish:workflow` → restart
+sequence (already the project's standing pattern since Phase 1) is sufficient and correct for
+`source: database` resolution and error-workflow dispatch as long as
+`N8N_USE_WORKFLOW_PUBLICATION_SERVICE` stays unset. If that env var is ever deliberately turned on for some
+future reason, this whole conclusion needs re-checking.
+
+---
+
+## 2026-08-14 — Near-miss: fixing the `executeWorkflow` bug briefly activated WF-1 for real
+
+**Context.** The CLI's `publish:workflow` command sets `active: true` *and* `activeVersionId` together —
+there is no way to update just the version pointer without also flipping the workflow's own trigger live.
+Applying the `workflowId` fix to `wf1_collect_ats.json` required a `publish:workflow` + restart cycle like
+every other workflow this session, which — as a side effect neither asked for nor noticed until checked —
+set WF-1's `active` flag to `true`, arming its real hourly Schedule Trigger against live Greenhouse/Lever/
+Ashby APIs. Activating WF-1 has been an explicit "blocked on the user" decision since Phase 2 completed;
+this bypassed that without asking.
+
+**Decision.** Caught by checking `workflow_entity.active` immediately after the restart (a habit worth
+keeping any time `publish:workflow` touches a schedule/webhook/poll-triggered workflow). Deactivated
+immediately via `import:workflow` (which syncs `active: false` from the committed JSON's own `"active":
+false` field) — no restart needed for deactivation to take effect, confirmed by the "Deactivating
+workflow..." message it prints immediately. Cross-checked `runs` and `execution_entity` for the ~10-minute
+window WF-1 was actually live: zero real fires occurred (its hourly schedule didn't cross a boundary in
+that window), so no unintended external traffic happened.
+
+**Why.** `publish:workflow`'s coupling of "make this the resolvable version" and "make this workflow's own
+trigger live" is not obvious from the command's name or its own output, and is easy to miss precisely
+because the workflow ends up in the *correct* state for source-database resolution — the only thing wrong
+is a side effect on a completely different property.
+
+**Consequences.** Standing rule: whenever `publish:workflow` is run against a workflow with its own
+schedule/webhook/poll trigger (as opposed to an `executeWorkflowTrigger`-only sub-workflow like WF-L0/
+WF-L1/WF-2/WF-3), check `workflow_entity.active` immediately after and reconcile it against the intended
+state before moving on — don't assume publishing a fix left activation state untouched.
+
+---
+
+## 2026-08-14 — Phase 3 alarm surface completed: WF-1 zero-result gap, WF-L0 fallback alarm, both verified live
+
+**Context.** Two gaps had been called out since Phase 1/2 but left for Phase 3: a provider branch in WF-1
+that returns zero postings never reached `Write Run` (zero items = the node never fires, so a source going
+silent was indistinguishable from "didn't run"), and WF-L0's `fallback_alarm` outcome returned cached data
+successfully but never actually alarmed despite CLAUDE.md requiring it to.
+
+**Decision — WF-1.** Replaced the single blended `Tally Results` → `Write Run` pair with a per-source
+aggregation: `Aggregate Per Source` seeds one entry for every source `Get Active ATS Sources` returned
+*before* fetching (fetched=0, new_count=0), then folds in whatever `Dedup Upsert` actually produced —
+guaranteeing one `runs` row per source every run regardless of whether that source returned any postings,
+the same guaranteed-row idea as WF-L0's `Get Cached` LEFT JOIN. A parallel `Update Source Zero-Streak`
+node increments `sources.consecutive_zero` on a zero-fetch source and resets it to 0 the moment a source
+recovers; `Check Zero Alarm` throws (after both writes have already committed, so the alarm can never
+block the data it's reporting on) once any source's streak reaches 2, dispatching through WF-1's existing
+`errorWorkflow` setting to WF-5. Also had to add `source_id` to `Dedup Upsert`'s `RETURNING` clause, since
+the per-posting `source_id` wasn't previously being returned at all.
+
+**Decision — WF-L0.** Added a parallel branch off `Decide Outcome` (independent of the main
+fresh/cached/hard-fail branch that returns data to the caller): `Is Fallback Alarm?` checks
+`outcome === 'fallback_alarm'`, and on true calls WF-5 directly via `Call WF-5 (fallback alarm)` — using
+its `executeWorkflowTrigger` "explicit call" entry point, the same one WF-1's zero-result alarm and the
+`_TEST wf5 explicit` verification from earlier this session already exercised. This branch runs
+side-by-side with, not instead of, the normal `Finalize` path, so the caller still gets the cached config
+back successfully — alarming and degrading gracefully are not mutually exclusive.
+
+**Why.** Both were verified against real conditions, not fixtures. WF-1: two real, independently-triggered
+executions of the real 15-source board list 15 minutes apart happened to produce exactly this scenario
+without being contrived — `ashby:deel`, `lever:mistral` and `lever:plaid` returned zero postings both
+times (their `consecutive_zero` correctly reached 2), while sources that succeeded once and then returned
+zero the second time correctly sat at 1, and `Check Zero Alarm` correctly named only the three that
+crossed the threshold. WF-L0: seeded a real `config_cache` row for a nonexistent filename, called WF-L0
+for real, and got a real Discord alarm with the exact composed message, while the calling test workflow's
+execution still completed with `status: success` — confirming the graceful-degrade-and-alarm behavior
+together, not just one half of it.
+
+**Consequences.** All three of Phase 3's alarm requirements from CLAUDE.md's TODO — WF-5 wired to every
+workflow, the zero-result alarm, the config-fetch-failure alarm — are now built and independently verified
+live. Remaining Phase 3 items are process, not code: weekly workflow export to git via the n8n REST API,
+and a deliberate chaos test (dead token mid-run recovers unattended).

@@ -41,7 +41,11 @@
       ],
       "parameters": {
         "source": "database",
-        "workflowId": "8e45da373fd94a90",
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -398,7 +402,11 @@
       ],
       "parameters": {
         "source": "database",
-        "workflowId": "9b3e7f42a8d15c60",
+        "workflowId": {
+          "__rl": true,
+          "value": "9b3e7f42a8d15c60",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -733,7 +741,8 @@
   },
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
   },
   "pinData": {}
 }

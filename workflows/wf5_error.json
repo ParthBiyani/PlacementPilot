@@ -1,0 +1,208 @@
+{
+  "id": "5e11a1a2b3c4d5e6",
+  "name": "WF-5 error",
+  "nodes": [
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000002",
+      "name": "When Called Explicitly",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        500
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000003",
+      "name": "From Error Trigger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst execution = item.execution || {};\nconst trigger = item.trigger || {};\nconst err = execution.error || trigger.error || {};\nconst workflow = item.workflow || {};\n\nconst message = err.message || err.description || (err.context && err.context.description) || null;\n\nreturn [{\n  json: {\n    workflow_name: workflow.name || 'unknown workflow',\n    error_message: message || ('Unrecognized error shape: ' + JSON.stringify(err).slice(0, 500)),\n    last_node: execution.lastNodeExecuted || null,\n    execution_url: execution.url || null\n  }\n}];"
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000004",
+      "name": "From Explicit Call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\n\nreturn [{\n  json: {\n    workflow_name: item.workflow_name || 'unknown workflow',\n    error_message: item.error_message || 'Unspecified alarm (no error_message provided)',\n    last_node: item.last_node || null,\n    execution_url: item.execution_url || null\n  }\n}];"
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000005",
+      "name": "Build Alarm Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst detailLines = [j.error_message || 'Unknown error'];\nif (j.last_node) detailLines.push(`Node: ${j.last_node}`);\nif (j.execution_url) detailLines.push(`Execution: ${j.execution_url}`);\nconst fullText = detailLines.join('\\n');\n\nreturn [{\n  json: {\n    workflow_name: j.workflow_name,\n    title: `\\u{1F6A8} ${j.workflow_name} failed`,\n    description: fullText,\n    db_error_text: fullText\n  }\n}];"
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000006",
+      "name": "Send Alarm",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ],
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "channel",
+        "guildId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1537760475398545418"
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1537760929264041984"
+        },
+        "content": "",
+        "embeds": {
+          "values": [
+            {
+              "inputMethod": "fields",
+              "title": "={{ $json.title }}",
+              "description": "={{ $json.description }}",
+              "color": 15548997
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "discordBotApi": {
+          "id": "zuoho254CZQQSFRx",
+          "name": "Discord Bot account"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000007",
+      "name": "Write Error Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        860,
+        500
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, error) VALUES ($1, now(), now(), $2) RETURNING id",
+        "additionalFields": {
+          "queryParams": "workflow_name,db_error_text"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "From Error Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called Explicitly": {
+      "main": [
+        [
+          {
+            "node": "From Explicit Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Alarm Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Explicit Call": {
+      "main": [
+        [
+          {
+            "node": "Build Alarm Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alarm Message": {
+      "main": [
+        [
+          {
+            "node": "Send Alarm",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Write Error Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

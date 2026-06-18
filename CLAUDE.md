@@ -80,7 +80,9 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-14.*
 
-**Phase: 2 (Scoring + immediate alerts) complete. Phase 3 (Reliability) next.**
+**Phase: 2 complete. Phase 3 (Reliability) core done — error handling, zero-result alarm, and
+config-fetch alarm all built and verified live. Two process items remain (weekly workflow export, chaos
+test) plus the standing WF-1-activation decision.**
 
 | Item | State |
 |---|---|
@@ -93,13 +95,13 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 | Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth 403 resolved. Still needed: Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord Bot, SerpApi, Gmail, **Anthropic**, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
 | Scaffolding | `db/schema.sql` (14 tables; `evaluations` gained `deadline`/`eligibility` columns in Phase 2), `docker-compose.yml`, `.env.example`, `config/*`, `prompts/v1.md`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` is an **`$env` var** (`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml`) — **not** `$vars`; n8n Variables turned out to be license-gated on this instance and silently resolves to `undefined` rather than erroring. See `DECISIONS.md` 2026-08-14 "Correction: n8n Variables are license-gated." |
-| Workflows | **Phase 1 + Phase 2 complete: all six workflows (WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3) built, imported, published, and tested against the live instance, real ATS APIs, real Anthropic, and real Discord.** 145 real postings landed in Phase 1; in Phase 2, real postings were scored by Claude Haiku (a FastAPI/Postgres/Redis/RAG posting scored 95, a Power BI/DAX/ETL posting scored 82) and real Discord alerts were confirmed visually, including verbatim-extracted `deadline`/`eligibility`. Two silent Phase-1-era bugs were found and fixed along the way (the `$vars` licensing gap above, and a `resp.body`-vs-`resp.data` parsing bug in WF-L0 that mirrored an already-documented WF-1 pitfall) — **every WF-L0 config fetch had been silently broken since Phase 1** until this session. Full details in `FLOW.md` "Changed this session" 2026-08-14. WF-1 is `active: false` — left for the user to switch on. |
+| Workflows | **Phase 1 + Phase 2 complete; Phase 3 core complete.** All seven workflows (WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5) built, imported, published, and tested against the live instance, real ATS APIs, real Anthropic, and real Discord. 145 real postings landed in Phase 1; in Phase 2, real postings were scored by Claude Haiku (95, 82) with real Discord alerts confirmed, including verbatim-extracted `deadline`/`eligibility`. This session (Phase 3) root-caused and fixed a real bug that had every `source: database` Execute Workflow call failing outside CLI-style testing: `executeWorkflow` nodes at `typeVersion 1.2` need `workflowId` as a resource-locator object, not a bare ID string — fixed across all six call sites, verified via genuine (non-manual) executions. Built and live-verified WF-1's zero-result alarm (per-source `runs` rows + `consecutive_zero` tracking, real alarm fired for 3 real dead sources) and WF-L0's fallback-fetch alarm (real Discord alarm while the caller still got cached data successfully). Full details in `DECISIONS.md` and `FLOW.md` "Changed this session" 2026-08-14. WF-1 is `active: false` — left for the user to switch on (briefly flipped `true` as an unintended side effect of a CLI publish this session, caught and reverted within the same restart cycle before any real hourly fire occurred — see `DECISIONS.md`). |
 
 **Blocked on the user:** Adzuna + Jooble signups · real free-tier limits for the aggregators already
 created · entering RapidAPI/JSearch + Careerjet credentials into the n8n store · starter company list
 approval · deleting the stray `client_secret_*.json` from the repo root once the Google credential is
 safely in n8n · **decide whether to activate WF-1** (starts real hourly external traffic + real Discord
-alerts) now that Phase 2 is verified end-to-end.
+alerts) now that Phase 2 and Phase 3's core reliability work are both verified end-to-end.
 
 ---
 
@@ -214,15 +216,20 @@ Unfinished items are never deleted. New work is added here.
       scoring→notify mechanism works correctly and fast (seconds) once triggered.
 
 ### Phase 3 — Reliability
-- [ ] WF-5 error handler; set as Error Workflow on every workflow
+- [x] WF-5 error handler; set as Error Workflow on every workflow (WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3).
+      Two entry points (real Error Trigger + an explicit executeWorkflowTrigger call for alarms that must
+      not abort their caller), both verified live with real Discord alarms and real `runs` rows.
 - [x] Retry on Fail (3, exponential) on WF-1's three HTTP nodes; Continue On Fail per source — done while
       building WF-1 (not strictly Phase 1 scope, but essentially free to include at the same time)
-- [ ] Zero-result alarm (source returns 0 twice consecutively) — **first fix this WF-1 gap:** a provider
-      branch with zero postings never reaches `Write Run` (zero items = the node doesn't fire), so no
-      `runs` row gets written for a genuine zero-result fetch, indistinguishable from "didn't run". Likely
-      fix: the same `LEFT JOIN`-against-a-synthetic-row pattern already used in WF-L0's `Get Cached`. See
+- [x] Zero-result alarm (source returns 0 twice consecutively) — fixed via a per-source `Aggregate Per
+      Source` node that seeds every known source at fetched=0 before folding in real results, guaranteeing
+      a `runs` row even for a silent source, plus `sources.consecutive_zero` tracking and a `Check Zero
+      Alarm` throw at streak≥2. Verified live: two real WF-1 executions produced a genuine 2-in-a-row zero
+      for `ashby:deel`/`lever:mistral`/`lever:plaid`, correctly named in the alarm. See `DECISIONS.md` and
       `FLOW.md` 2026-08-14.
-- [ ] Config-fetch failure alarm
+- [x] Config-fetch failure alarm — WF-L0's `fallback_alarm` outcome now calls WF-5 explicitly via a
+      parallel branch (doesn't block the caller from getting cached data back). Verified live with a
+      seeded fake cache row for a nonexistent file: real Discord alarm landed, caller still succeeded.
 - [ ] Weekly workflow export to git via n8n REST API
 - [ ] Chaos test: dead token mid-run recovers unattended
 
@@ -448,3 +455,56 @@ WhatsApp as a second channel · more aggregators · public write-up
   deleted after verification; nothing test-related was committed.
 - **Phase 2 is complete.** Next: Phase 3 (WF-5 error handling, the zero-result alarm, config-fetch-failure
   alarm) — or activating WF-1 first if the user wants real collection running now.
+
+### 2026-08-14 — Phase 3 core: root-caused `source: database` failures, closed both alarm gaps
+
+- Picked up mid-Phase-3 (WF-5 already built) with `Call WF-L1` failing on every real, non-CLI execution:
+  "No information about the workflow to execute found." Spent a long time investigating n8n's newer dual
+  publishing system (a `workflow_published_version` table + outbox, separate from the legacy
+  `active`/`activeVersionId` the CLI sets) before finding, by reading n8n's own source inside the
+  container, that this was a complete dead end — that whole system is gated behind
+  `N8N_USE_WORKFLOW_PUBLICATION_SERVICE`, which defaults off and isn't set here, so it was never involved.
+- **The real bug:** every `Call WF-*` node is `executeWorkflow` at `typeVersion 1.2`, which needs
+  `workflowId` as a resource-locator object (`{__rl, value, mode: "id"}`) — every node had a bare ID
+  string instead, so n8n's own `getWorkflowInfo()` destructured `value` out of a string and got
+  `undefined`. Fixed all six occurrences (WF-0→WF-L1, WF-1→WF-L0/WF-L1/WF-2, WF-2→WF-L0/WF-3). Verified
+  immediately: a real UI-triggered WF-0 execution correctly resolved and ran `Call WF-L1` end to end.
+  Full writeup, including the dead-end investigation (kept so it isn't repeated), in `DECISIONS.md`.
+- **Near-miss, caught and reversed:** applying the fix to WF-1 required the same `publish:workflow` +
+  restart cycle used for every other workflow — which, as an undocumented side effect, also set WF-1's
+  `active` flag to `true`, arming its real hourly schedule against live ATS APIs without the go-ahead
+  that's been sitting in "blocked on the user" since Phase 2. Caught by checking `workflow_entity.active`
+  right after the restart, deactivated immediately, and confirmed via `runs`/`execution_entity` that zero
+  real fires happened in the roughly 10 minutes it was actually live.
+- **Closed the WF-1 zero-result gap:** a provider returning zero postings previously never reached
+  `Write Run` at all (zero items = the node doesn't fire), making a dead source indistinguishable from
+  "didn't run." Rebuilt as a per-source `Aggregate Per Source` node that seeds every known source at
+  fetched=0 before folding in real dedup results, guaranteeing one `runs` row per source every run, plus
+  `sources.consecutive_zero` tracking and a `Check Zero Alarm` throw at streak≥2 (after the writes it's
+  reporting on have already committed). Verified with real data, not a contrived test: two real WF-1
+  executions 15 minutes apart happened to produce exactly this scenario — `ashby:deel`, `lever:mistral`,
+  and `lever:plaid` returned zero postings both times and were correctly named in the alarm, while sources
+  with one real hit and one zero correctly sat at streak=1. The same run incidentally became the first
+  real full-scale pipeline test: 1,558 fresh postings, 275 scored (range 5–72, avg 17 — a healthy real
+  distribution, not a stuck scorer), 0 crossed the notify threshold, so 0 Discord messages — confirmed
+  with the user after they were (understandably) surprised WF-2 was still "running" 5 minutes in; it
+  wasn't stuck, it was working through a much larger real batch than the test was expected to produce.
+- **Closed the WF-L0 fallback-alarm gap:** added a parallel branch off `Decide Outcome`
+  (`Is Fallback Alarm?` → `Call WF-5 (fallback alarm)`) that fires alongside, not instead of, the normal
+  path — so a config-fetch failure with a usable cache still alarms *and* still returns good data to the
+  caller. Verified live: seeded a fake `config_cache` row for a nonexistent file, called WF-L0 for real,
+  got a real Discord alarm with the composed message, and confirmed the calling execution still reported
+  `status: success`.
+- Independently re-confirmed (reading n8n's source) why a manual "Execute workflow" button click never
+  triggers WF-5: `dispatchesErrorWorkflow = !isManualMode && !suppressErrorWorkflow` is unconditional in
+  n8n itself, nothing to fix here — it's why the very first re-test of WF-0 after the executeWorkflow fix
+  correctly produced no alarm even though nothing was broken.
+- Cleanup: deleted the leftover deliberately-bad WF-0 test fixture (its job — proving WF-5 dispatch works
+  — is now served by the real zero-result and fallback-alarm tests above), every throwaway test workflow,
+  a fake `config_cache` test row, and stray test `pinData` that had been sitting in WF-L1's committed JSON
+  since Phase 1.
+- **Phase 3's core reliability work is done and independently verified live**, not just built. Remaining
+  Phase 3 items are process, not code: weekly workflow export to git via the n8n REST API, and a
+  deliberate chaos test (dead token mid-run recovers unattended). Next: either those two items, or
+  Phase 4 (ingestion breadth), or activating WF-1 — all now genuinely the user's call to make, not gated
+  on anything broken.

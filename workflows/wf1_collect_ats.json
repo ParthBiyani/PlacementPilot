@@ -48,7 +48,11 @@
       ],
       "parameters": {
         "source": "database",
-        "workflowId": "8e45da373fd94a90",
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -336,7 +340,11 @@
       ],
       "parameters": {
         "source": "database",
-        "workflowId": "773d1f4a0f6b4bf7",
+        "workflowId": {
+          "__rl": true,
+          "value": "773d1f4a0f6b4bf7",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -351,7 +359,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, (xmax = 0) AS was_inserted",
+        "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, source_id, (xmax = 0) AS was_inserted",
         "additionalFields": {
           "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date"
         }
@@ -389,13 +397,17 @@
       ],
       "parameters": {
         "source": "database",
-        "workflowId": "c4f8a29d1e6b3075",
+        "workflowId": {
+          "__rl": true,
+          "value": "c4f8a29d1e6b3075",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
     {
       "id": "6a5b613d-afae-4604-9c6d-9425f7839398",
-      "name": "Tally Results",
+      "name": "Aggregate Per Source",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -405,7 +417,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const items = $input.all();\nconst total = items.length;\nconst inserted = items.filter(i => i.json.was_inserted === true).length;\nconst deduped = total - inserted;\nconst sourceItems = $('Call WF-L1').all();\nconst provider = sourceItems.length > 0 ? (sourceItems[0].json.source || 'unknown') : 'unknown';\n\nreturn [{ json: { provider, fetched: total, new_count: inserted, deduped } }];"
+        "jsCode": "// Seed one entry per source that was actually queried this run, so a\n// provider returning zero postings (empty result OR fetch failure) still\n// gets a runs row instead of silently vanishing (Phase 3 zero-result gap).\nconst sources = $('Get Active ATS Sources').all().map(i => i.json);\nconst bySource = new Map();\nfor (const s of sources) {\n  bySource.set(s.id, { source_id: s.id, provider: s.provider, fetched: 0, new_count: 0 });\n}\n\nfor (const item of $input.all()) {\n  const sid = item.json.source_id;\n  if (!bySource.has(sid)) {\n    bySource.set(sid, { source_id: sid, provider: 'unknown', fetched: 0, new_count: 0 });\n  }\n  const agg = bySource.get(sid);\n  agg.fetched += 1;\n  if (item.json.was_inserted === true) agg.new_count += 1;\n}\n\nreturn Array.from(bySource.values()).map(v => ({\n  json: { ...v, deduped: v.fetched - v.new_count }\n}));"
       }
     },
     {
@@ -415,13 +427,13 @@
       "typeVersion": 1,
       "position": [
         3080,
-        500
+        400
       ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, source_id, started_at, finished_at, fetched, new_count, deduped) VALUES ('WF-1', $1, now(), now(), $2, $3, $4) RETURNING id",
         "additionalFields": {
-          "queryParams": "provider,fetched,new_count,deduped"
+          "queryParams": "source_id,fetched,new_count,deduped"
         }
       },
       "credentials": {
@@ -429,6 +441,44 @@
           "id": "pp-local-postgres",
           "name": "Local Postgres"
         }
+      }
+    },
+    {
+      "id": "b1c2d3e4-6666-4c77-ad88-99990000aaaa",
+      "name": "Update Source Zero-Streak",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        620
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sources SET consecutive_zero = CASE WHEN $2::int = 0 THEN consecutive_zero + 1 ELSE 0 END, last_ok_at = CASE WHEN $2::int > 0 THEN now() ELSE last_ok_at END WHERE id = $1 RETURNING id AS source_id, consecutive_zero, $3::text AS provider",
+        "additionalFields": {
+          "queryParams": "source_id,fetched,provider"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "c2d3e4f5-7777-4d88-be99-0000aaaabbbb",
+      "name": "Check Zero Alarm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        620
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Runs after every run/streak row is already committed, so an alarm here\n// never blocks the writes that already happened -- matches WF-0's pattern\n// of throwing only after Write Run has succeeded.\nconst offenders = $input.all()\n  .map(i => i.json)\n  .filter(s => s.consecutive_zero >= 2);\n\nif (offenders.length > 0) {\n  const detail = offenders\n    .map(s => `${s.source_id} (${s.provider}): ${s.consecutive_zero} consecutive zero-result runs`)\n    .join('; ');\n  throw new Error('WF-1: source(s) returned zero postings 2+ runs in a row: ' + detail);\n}\n\nreturn [{ json: { ok: true } }];"
       }
     }
   ],
@@ -649,7 +699,7 @@
       "main": [
         [
           {
-            "node": "Tally Results",
+            "node": "Aggregate Per Source",
             "type": "main",
             "index": 0
           },
@@ -672,11 +722,27 @@
         ]
       ]
     },
-    "Tally Results": {
+    "Aggregate Per Source": {
       "main": [
         [
           {
             "node": "Write Run",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Source Zero-Streak",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Source Zero-Streak": {
+      "main": [
+        [
+          {
+            "node": "Check Zero Alarm",
             "type": "main",
             "index": 0
           }
@@ -686,7 +752,8 @@
   },
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
   },
   "pinData": {}
 }

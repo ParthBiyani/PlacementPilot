@@ -7,9 +7,18 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [220, 300],
+      "position": [
+        220,
+        300
+      ],
       "parameters": {
-        "rule": { "interval": [{ "field": "days" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "days"
+            }
+          ]
+        }
       }
     },
     {
@@ -17,13 +26,19 @@
       "name": "Get Fixtures",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [440, 300],
+      "position": [
+        440,
+        300
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT id, kind, input, expected, note FROM test_fixtures WHERE kind = 'normalize' ORDER BY id"
       },
       "credentials": {
-        "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" }
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
       }
     },
     {
@@ -31,7 +46,10 @@
       "name": "Prepare WF-L1 Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [660, 300],
+      "position": [
+        660,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -43,10 +61,17 @@
       "name": "Call WF-L1",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [880, 300],
+      "position": [
+        880,
+        300
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": "773d1f4a0f6b4bf7",
+        "workflowId": {
+          "__rl": true,
+          "value": "773d1f4a0f6b4bf7",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -55,7 +80,10 @@
       "name": "Diff Against Expected",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, 300],
+      "position": [
+        1100,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -67,7 +95,10 @@
       "name": "Summarize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1320, 300],
+      "position": [
+        1320,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -79,7 +110,10 @@
       "name": "Write Run",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [1540, 300],
+      "position": [
+        1540,
+        300
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count, error) VALUES ('WF-0', now(), now(), $1, $2, $3) RETURNING id",
@@ -88,7 +122,10 @@
         }
       },
       "credentials": {
-        "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" }
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
       }
     },
     {
@@ -96,7 +133,10 @@
       "name": "Is All Passed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1760, 300],
+      "position": [
+        1760,
+        300
+      ],
       "parameters": {
         "conditions": {
           "boolean": [
@@ -114,7 +154,10 @@
       "name": "Finalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1980, 200],
+      "position": [
+        1980,
+        200
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -126,7 +169,10 @@
       "name": "Alarm",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1980, 420],
+      "position": [
+        1980,
+        420
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -136,36 +182,105 @@
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [[{ "node": "Get Fixtures", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Get Fixtures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Get Fixtures": {
-      "main": [[{ "node": "Prepare WF-L1 Input", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Prepare WF-L1 Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Prepare WF-L1 Input": {
-      "main": [[{ "node": "Call WF-L1", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Call WF-L1": {
-      "main": [[{ "node": "Diff Against Expected", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Diff Against Expected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Diff Against Expected": {
-      "main": [[{ "node": "Summarize", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Summarize": {
-      "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Write Run": {
-      "main": [[{ "node": "Is All Passed?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Is All Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Is All Passed?": {
       "main": [
-        [{ "node": "Finalize", "type": "main", "index": 0 }],
-        [{ "node": "Alarm", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Finalize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alarm",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
   },
   "pinData": {}
 }

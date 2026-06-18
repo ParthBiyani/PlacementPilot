@@ -7,7 +7,10 @@
       "name": "When Executed by Another Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.2,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "parameters": {
         "inputSource": "passthrough"
       }
@@ -17,7 +20,10 @@
       "name": "Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -29,7 +35,10 @@
       "name": "Hash Exact Key",
       "type": "n8n-nodes-base.crypto",
       "typeVersion": 1,
-      "position": [680, 300],
+      "position": [
+        680,
+        300
+      ],
       "parameters": {
         "action": "hash",
         "type": "SHA256",
@@ -44,7 +53,10 @@
       "name": "Hash Content",
       "type": "n8n-nodes-base.crypto",
       "typeVersion": 1,
-      "position": [900, 300],
+      "position": [
+        900,
+        300
+      ],
       "parameters": {
         "action": "hash",
         "type": "SHA256",
@@ -59,7 +71,10 @@
       "name": "Shape Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 300],
+      "position": [
+        1120,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -69,63 +84,54 @@
   ],
   "connections": {
     "When Executed by Another Workflow": {
-      "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Normalize": {
-      "main": [[{ "node": "Hash Exact Key", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Hash Exact Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Hash Exact Key": {
-      "main": [[{ "node": "Hash Content", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Hash Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Hash Content": {
-      "main": [[{ "node": "Shape Output", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Shape Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
   },
-  "pinData": {
-    "When Executed by Another Workflow": [
-      {
-        "json": {
-          "company": "PhonePe Technologies",
-          "role": "Software Engineer Intern",
-          "location": "Bengaluru",
-          "employment_type": "internship",
-          "apply_url": "https://boards.greenhouse.io/phonepe/jobs/1",
-          "source": "greenhouse",
-          "source_id": "gh-phonepe-1",
-          "description": "We are looking for a software engineer intern to join our backend team.",
-          "posted_date": "2026-08-10T00:00:00.000Z"
-        }
-      },
-      {
-        "json": {
-          "company": "phonepe",
-          "role": "software engineer intern",
-          "location": "blr",
-          "employment_type": "internship",
-          "apply_url": "https://boards.greenhouse.io/phonepe/jobs/1?utm=aggregator",
-          "source": "jsearch",
-          "source_id": "js-9981",
-          "description": "We are looking for a software engineer intern to join our backend team.",
-          "posted_date": "2026-08-10T00:00:00.000Z"
-        }
-      },
-      {
-        "json": {
-          "company": "Groww Pvt Ltd",
-          "role": "Senior Backend Engineer (Remote) #4521",
-          "location": "Mumbai",
-          "employment_type": "full_time",
-          "apply_url": "https://boards.greenhouse.io/groww/jobs/2",
-          "source": "greenhouse",
-          "source_id": "gh-groww-2",
-          "description": "Own the payments ledger service handling millions of transactions daily.",
-          "posted_date": "2026-08-11T00:00:00.000Z"
-        }
-      }
-    ]
-  }
+  "pinData": {}
 }

@@ -26,7 +26,7 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-3` notify | Execute Workflow (from WF-2) | per posting | ✅ |
 | `WF-3b` inbound | **Webhook** — the only public surface | on interaction | ⬜ |
 | `WF-4` gmail | Gmail Trigger | 15 min | ⬜ |
-| `WF-5` error | Error Workflow on every workflow above | on failure | ⬜ |
+| `WF-5` error | Error Workflow on every workflow above | on failure | ✅ |
 | `WF-6` eval | Manual Trigger / pre-promotion | on demand | ⬜ |
 
 ---
@@ -61,9 +61,17 @@ Schedule (hourly)
   │                                                      ▼
   ├─► Postgres: exact-key dedup on postings.id
   │        ├─ hit  → bump last_seen → STOP
-  │        └─ miss → INSERT posting
+  │        └─ miss → INSERT posting (RETURNING now includes source_id)
   │
-  ├─► write runs row (fetched / new / deduped)
+  ├─► Aggregate Per Source: seed one entry per source from "Get Active ATS
+  │        Sources" BEFORE folding in dedup results — guarantees a runs row
+  │        even when a source returns zero postings (LEFT-JOIN-style, same
+  │        idea as WF-L0's Get Cached)
+  │        ├─► write runs row per source (fetched / new / deduped)
+  │        └─► UPDATE sources.consecutive_zero (+1 on zero, reset on >0)
+  │                └─► Check Zero Alarm: throw if any source's streak ≥ 2
+  │                        (after both writes above already committed)
+  │                        → WF-5 via errorWorkflow
   │
   └─► WF-2 score  (only for genuinely new postings)
            │
@@ -173,13 +181,30 @@ Schedule (daily)
 ```
 
 ### Errors — `WF-5`
-Set as the Error Workflow on every workflow above.
+Set as `settings.errorWorkflow` on every workflow above (WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5
+itself). Two independent entry points feed the same shared tail:
 ```
-failure ──► INSERT runs (error)
-        ├─ source returned 0 twice consecutively → ALARM   ← how this project dies quietly
-        ├─ config fetch failed → ALARM
-        └─ today's SUM(cost_usd) > cap → deactivate WF-2 via n8n REST API
+Error Trigger (real thrown error, dispatched by n8n itself — NOT on manual/editor executions)
+        │
+        ├─ payload shape varies: {execution:{...}} when an executionId exists,
+        │  {trigger:{...}} for internal errors (e.g. WorkflowActivationError) —
+        │  both handled defensively
+        │
+"When Called Explicitly" (executeWorkflowTrigger — used for alarms that must
+NOT abort the caller, e.g. WF-1's zero-result alarm and WF-L0's fallback alarm,
+both of which need their own execution to keep succeeding)
+        │
+        ▼
+Build Alarm Message ──► Send Alarm (Discord)
+                    └──► Write Error Run (INSERT runs)
 ```
+- **Source returned 0 postings twice consecutively** → WF-1's own `Check Zero Alarm` node throws (real
+  thrown error → Error Trigger path). Verified live: two real, independently-triggered WF-1 executions
+  produced exactly this for `ashby:deel`/`lever:mistral`/`lever:plaid`.
+- **Config fetch failed but a cached fallback exists** → WF-L0 calls WF-5 explicitly (`Is Fallback
+  Alarm?` → `Call WF-5 (fallback alarm)`), so WF-L0 still returns the good cached config to its own
+  caller. Verified live: real Discord alarm landed while the calling execution still reported success.
+- Daily spend cap enforcement (`SUM(cost_usd) > cap → deactivate WF-2`) is still Phase 9, not built.
 
 ---
 
@@ -428,3 +453,51 @@ verified by re-running the identical notify call and confirming zero rows, zero 
 **Phase 2 is complete.** Next: Phase 3 (WF-5 error handling, the zero-result alarm gap already noted for
 WF-1, config-fetch-failure alarm) — or, if the user prefers, activating WF-1 first to start real
 collection now that scoring and alerts actually work.
+
+### 2026-08-14 — Phase 3 core: root-caused a `source: database` execution bug, closed both alarm gaps
+
+Picked up mid-Phase-3 after a context compaction, with WF-5 already built but `source: database` Execute
+Workflow calls failing for real, non-CLI executions with "No information about the workflow to execute
+found." A long investigation into n8n's newer dual publishing system (`workflow_published_version` /
+publication outbox) turned out to be a complete dead end — full writeup in `DECISIONS.md`. The real cause,
+found by reading n8n's own source inside the container: every `executeWorkflow` node in this project is
+`typeVersion 1.2`, which expects `workflowId` as a resource-locator object (`{__rl, value, mode: "id"}`),
+not the bare ID string every `Call WF-*` node actually had. Fixed all six occurrences (WF-0→WF-L1,
+WF-1→WF-L0/WF-L1/WF-2, WF-2→WF-L0/WF-3). Verified immediately and repeatedly against the real running
+instance (CLI `execute` no longer works alongside a running server on this n8n version — port 5679
+conflict — so all verification this session was via genuine UI/schedule-triggered executions).
+
+Caught and reversed a near-miss along the way: publishing WF-1's fix also flipped its `active` flag to
+`true` as an undocumented side effect of the CLI's `publish:workflow` command, arming its real hourly
+schedule against live ATS APIs without the explicit go-ahead that's been sitting in "blocked on the user"
+since Phase 2. Caught within the same restart cycle, deactivated immediately, confirmed via `runs`/
+`execution_entity` that zero real fires happened in the ~10-minute window it was live.
+
+Closed both outstanding Phase 3 alarm gaps, each verified against real conditions:
+- **WF-1 zero-result gap** — replaced the single blended `Tally Results`/`Write Run` with a per-source
+  `Aggregate Per Source` (seeds every known source at fetched=0 before folding in real results, so a
+  silent source always gets a `runs` row) plus `Update Source Zero-Streak` and `Check Zero Alarm`. Two
+  real WF-1 executions 15 minutes apart organically produced a genuine test case — three sources
+  (`ashby:deel`, `lever:mistral`, `lever:plaid`) returned zero both times and correctly triggered the
+  alarm by name; sources with one real hit and one zero correctly sat at streak=1, no false alarm. This
+  same run also incidentally validated the whole pipeline at real scale for the first time — 1,558 fresh
+  postings, 275 scored (range 5-72, avg 17, healthy real distribution), 0 crossed the notify threshold, 0
+  Discord messages sent.
+- **WF-L0 fallback-alarm gap** — added a parallel branch off `Decide Outcome` (`Is Fallback Alarm?` →
+  `Call WF-5 (fallback alarm)`) that fires alongside, not instead of, the normal path that returns cached
+  config to the caller. Verified live with a seeded fake `config_cache` row for a nonexistent filename: a
+  real Discord alarm landed with the exact composed message, and the calling execution still reported
+  `status: success`.
+
+Also independently re-confirmed WF-5's real (non-manual) dispatch mechanism: n8n's own source shows
+`dispatchesErrorWorkflow = !isManualMode && !suppressErrorWorkflow` — the editor's "Execute workflow"
+button deliberately never triggers error workflows, only real schedule/webhook/sub-workflow-triggered
+executions do. Two real automatic WF-0 failures (leftover deliberately-bad fixture, since removed) fired
+during restart cycles and both correctly dispatched to WF-5, both confirmed landing in Discord.
+
+Cleanup: deleted the leftover deliberately-bad WF-0 test fixture, all throwaway test workflows, a fake
+`config_cache` row, and stray test `pinData` sitting in WF-L1's committed JSON since Phase 1.
+
+**Phase 3's core error-handling work is done and independently verified live.** Remaining Phase 3 items
+are process, not code: weekly workflow export to git via the n8n REST API, and a deliberate chaos test
+(dead token mid-run recovers unattended).
