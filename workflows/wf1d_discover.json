@@ -1,0 +1,259 @@
+{
+  "id": "d15c0f3a2b4e6789",
+  "name": "WF-1d discover",
+  "nodes": [
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 400],
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "weeks", "weeksInterval": 1 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000002",
+      "name": "Request Accelerators Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { file: 'accelerators.json' } }];"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000003",
+      "name": "Call WF-L0",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [640, 400],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
+        "mode": "once"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000004",
+      "name": "Filter Enabled JSON Accelerators",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const config = $input.first().json.config || {};\nconst all = config.accelerators || [];\n// Only 'json'-method accelerators are buildable right now -- 'html' ones need\n// per-site scraping logic that hasn't been written or verified yet, and are\n// deliberately left disabled in accelerators.json until that happens.\nconst enabled = all.filter(a => a.enabled === true && a.method === 'json');\nreturn enabled.map(a => ({ json: { accel_id: a.id, accel_name: a.name, url: a.url, fields: a.fields } }));"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000005",
+      "name": "Fetch Accelerator Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1080, 400],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{ $json.url }}",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job discovery)\"}",
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000006",
+      "name": "Extract Candidate Companies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const results = [];\nconst accelItems = $('Filter Enabled JSON Accelerators').all();\nconst fetchItems = $input.all();\n\nfor (let i = 0; i < fetchItems.length; i++) {\n  const accel = accelItems[i].json;\n  const resp = fetchItems[i].json;\n  if (resp.statusCode !== 200) continue;\n\n  let list;\n  try {\n    const raw = resp.body !== undefined ? resp.body : resp.data;\n    list = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) {\n    continue;\n  }\n  if (!Array.isArray(list)) continue;\n\n  const f = accel.fields || { name: 'name', domain: 'website' };\n  for (const c of list) {\n    const regions = c.regions || [];\n    const locationText = (c.all_locations || '').toLowerCase();\n    const isIndia = regions.includes('India') || locationText.includes('india');\n    const isHiring = c.isHiring === true;\n    const isActive = c.status === 'Active';\n    const website = c[f.domain];\n    if (isIndia && isHiring && isActive && website) {\n      results.push({\n        json: {\n          accelerator: accel.accel_id,\n          company: c[f.name],\n          slug: c.slug || null,\n          website\n        }\n      });\n    }\n  }\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000007",
+      "name": "Build Career Page Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// A board's real token is rarely just the company's slug (e.g. Razorpay's\n// real Greenhouse token is 'razorpaysoftwareprivatelimited', not 'razorpay')\n// -- guessing tokens directly was tried and empirically produced 0 hits\n// across 49 real companies. What works: the company's own careers/jobs page\n// almost always links its real ATS board directly, so extract the token\n// from that link instead of guessing it.\n//\n// Avoid the URL constructor here -- n8n's Code node sandbox doesn't expose\n// it, so new URL(...) throws ReferenceError for every item and a try/catch\n// around it silently swallows the whole batch with zero visible error.\nfunction getOrigin(raw) {\n  const m = (raw || '').match(/^https?:\\/\\/[^\\/]+/i);\n  return m ? m[0] : null;\n}\n\nconst PATHS = ['/careers', '/jobs', ''];\nconst out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json;\n  const domain = getOrigin(j.website);\n  if (!domain) continue;\n  for (const path of PATHS) {\n    out.push({\n      json: {\n        accelerator: j.accelerator,\n        company: j.company,\n        slug: j.slug,\n        website: j.website,\n        candidate_url: domain + path\n      }\n    });\n  }\n}\n\nreturn out;"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000008",
+      "name": "Fetch Career Candidate Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1740, 400],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{ $json.candidate_url }}",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job discovery)\"}",
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-000000000009",
+      "name": "Extract ATS Link Per Company",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const ATS_PATTERNS = [\n  { provider: 'greenhouse',      re: /(?:job-boards|boards)\\.greenhouse\\.io\\/([a-zA-Z0-9_-]+)/ },\n  { provider: 'lever',           re: /jobs\\.lever\\.co\\/([a-zA-Z0-9_-]+)/ },\n  { provider: 'ashby',           re: /jobs\\.ashbyhq\\.com\\/([a-zA-Z0-9_-]+)/ },\n  { provider: 'workable',        re: /apply\\.workable\\.com\\/([a-zA-Z0-9_-]+)/ },\n  { provider: 'smartrecruiters', re: /jobs\\.smartrecruiters\\.com\\/([a-zA-Z0-9_-]+)/ },\n  { provider: 'recruitee',       re: /([a-zA-Z0-9_-]+)\\.recruitee\\.com/ }\n];\n\nconst candidateItems = $('Build Career Page Candidates').all();\nconst fetchItems = $input.all();\n\n// Group candidate page results by company (accelerator+slug), keep the\n// first candidate URL that yields a real ATS link.\nconst byCompany = new Map();\nfor (let i = 0; i < fetchItems.length; i++) {\n  const cand = candidateItems[i].json;\n  const key = cand.accelerator + ':' + cand.slug;\n  if (byCompany.has(key) && byCompany.get(key).found) continue;\n\n  const resp = fetchItems[i].json;\n  const body = (resp.statusCode === 200) ? (typeof resp.body === 'string' ? resp.body : (typeof resp.data === 'string' ? resp.data : '')) : '';\n\n  let match = null;\n  for (const p of ATS_PATTERNS) {\n    const m = body.match(p.re);\n    if (m) { match = { provider: p.provider, token: m[1] }; break; }\n  }\n\n  if (match) {\n    byCompany.set(key, {\n      found: true,\n      accelerator: cand.accelerator,\n      company: cand.company,\n      slug: cand.slug,\n      website: cand.website,\n      provider: match.provider,\n      token: match.token,\n      source_page: cand.candidate_url\n    });\n  } else if (!byCompany.has(key)) {\n    byCompany.set(key, { found: false, accelerator: cand.accelerator, company: cand.company, slug: cand.slug, website: cand.website });\n  }\n}\n\nreturn Array.from(byCompany.values()).filter(v => v.found).map(v => ({ json: v }));"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-00000000000a",
+      "name": "Probe Confirmed Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const PATTERNS = {\n  greenhouse:      'https://boards-api.greenhouse.io/v1/boards/{token}/jobs',\n  lever:           'https://api.lever.co/v0/postings/{token}?mode=json',\n  ashby:           'https://api.ashbyhq.com/posting-api/job-board/{token}',\n  workable:        'https://apply.workable.com/api/v1/widget/accounts/{token}',\n  smartrecruiters: 'https://api.smartrecruiters.com/v1/companies/{token}/postings',\n  recruitee:       'https://{token}.recruitee.com/api/offers/'\n};\n\nreturn $input.all().map(item => {\n  const j = item.json;\n  const pattern = PATTERNS[j.provider];\n  return { json: { ...j, probe_url: pattern ? pattern.replace('{token}', j.token) : null } };\n});"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-00000000000b",
+      "name": "Confirm Probe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2400, 400],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{ $json.probe_url }}",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-00000000000c",
+      "name": "Build Discovered Source",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2620, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const linkItems = $('Probe Confirmed Token').all();\nconst confirmItems = $input.all();\n\nreturn confirmItems.map((item, i) => {\n  const j = linkItems[i].json;\n  const resp = item.json;\n  const confirmed = resp.statusCode === 200;\n  return {\n    json: {\n      id: j.accelerator + ':' + j.slug,\n      accelerator: j.accelerator,\n      company: j.company,\n      domain: j.website,\n      confirmed,\n      probe_result: JSON.stringify({ provider: j.provider, token: j.token, source_page: j.source_page, confirmed })\n    }\n  };\n});"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-00000000000d",
+      "name": "Upsert Discovered Source",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2840, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO discovered_sources (id, accelerator, company, domain, probe_result, promoted, found_at) VALUES ($1, $2, $3, $4, $5::jsonb, false, now()) ON CONFLICT (id) DO UPDATE SET probe_result = EXCLUDED.probe_result, found_at = now() RETURNING id, ($5::jsonb->>'confirmed')::boolean AS confirmed",
+        "additionalFields": {
+          "queryParams": "id,accelerator,company,domain,probe_result"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-00000000000e",
+      "name": "Tally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3060, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "let candidates = 0;\ntry { candidates = $('Extract Candidate Companies').all().length; } catch (e) {}\nconst confirmed = $input.all().filter(i => i.json.confirmed === true).length;\nconst registered = $input.all().length;\nreturn [{ json: { candidates, registered, confirmed } }];"
+      }
+    },
+    {
+      "id": "e1a1b1c1-0001-4000-8000-00000000000f",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [3280, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count) VALUES ('WF-1d', now(), now(), $1, $2) RETURNING id",
+        "additionalFields": {
+          "queryParams": "candidates,confirmed"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Request Accelerators Config", "type": "main", "index": 0 }]] },
+    "Request Accelerators Config": { "main": [[{ "node": "Call WF-L0", "type": "main", "index": 0 }]] },
+    "Call WF-L0": { "main": [[{ "node": "Filter Enabled JSON Accelerators", "type": "main", "index": 0 }]] },
+    "Filter Enabled JSON Accelerators": { "main": [[{ "node": "Fetch Accelerator Data", "type": "main", "index": 0 }]] },
+    "Fetch Accelerator Data": { "main": [[{ "node": "Extract Candidate Companies", "type": "main", "index": 0 }]] },
+    "Extract Candidate Companies": { "main": [[{ "node": "Build Career Page Candidates", "type": "main", "index": 0 }]] },
+    "Build Career Page Candidates": { "main": [[{ "node": "Fetch Career Candidate Page", "type": "main", "index": 0 }]] },
+    "Fetch Career Candidate Page": { "main": [[{ "node": "Extract ATS Link Per Company", "type": "main", "index": 0 }]] },
+    "Extract ATS Link Per Company": { "main": [[{ "node": "Probe Confirmed Token", "type": "main", "index": 0 }]] },
+    "Probe Confirmed Token": { "main": [[{ "node": "Confirm Probe", "type": "main", "index": 0 }]] },
+    "Confirm Probe": { "main": [[{ "node": "Build Discovered Source", "type": "main", "index": 0 }]] },
+    "Build Discovered Source": { "main": [[{ "node": "Upsert Discovered Source", "type": "main", "index": 0 }]] },
+    "Upsert Discovered Source": { "main": [[{ "node": "Tally", "type": "main", "index": 0 }]] },
+    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
+  },
+  "pinData": {}
+}

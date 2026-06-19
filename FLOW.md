@@ -21,7 +21,7 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-1` collect-ats | Schedule Trigger | hourly | ✅ (built, tested; **not yet activated**) |
 | `WF-1b` collect-aggregators | Schedule Trigger | daily | ⬜ |
 | `WF-1c` collect-pages | Schedule Trigger | daily | ⬜ |
-| `WF-1d` discover | Schedule Trigger | weekly | ⬜ |
+| `WF-1d` discover | Schedule Trigger | weekly | ✅ (built, tested; **not yet activated**) |
 | `WF-2` score | Execute Workflow (from collectors) | per batch | ✅ |
 | `WF-3` notify | Execute Workflow (from WF-2) | per posting | ✅ |
 | `WF-3b` inbound | **Webhook** — the only public surface | on interaction | ⬜ |
@@ -163,11 +163,22 @@ Gmail Trigger (15m, read-only)
 ### Discovery — `WF-1d`
 ```
 Schedule (weekly)
-  └─► WF-L0 → accelerators.json
-      └─► per accelerator: fetch portfolio → extract company + domain
-          └─► probe ATS token patterns (greenhouse/lever/ashby/workable/…)
-              └─► 200 → INSERT discovered_sources (probe_result)
-                  └─► promote into sources
+  └─► WF-L0 → accelerators.json (enabled + method:'json' entries only, e.g. yc)
+      └─► fetch portfolio (e.g. YC's ~10MB companies dataset)
+          └─► filter: India-located · isHiring · status=Active
+              └─► per candidate company, try /careers · /jobs · homepage
+                  └─► regex-extract a known ATS domain link (greenhouse/lever/
+                      ashby/workable/smartrecruiters/recruitee) from whichever
+                      page responded — NOT a guessed token. Guessing from the
+                      company's slug was tried and measured 0/49 real hits;
+                      extracting from the company's own career-page link is
+                      what actually finds boards (see DECISIONS.md 2026-08-14).
+                      Confirmed live: 3/49 real hits on the first run.
+                      ├─► confirm the extracted token against the real
+                      │   provider API pattern (same boards-api.greenhouse.io-
+                      │   style probes WF-1 already uses)
+                      └─► INSERT discovered_sources (probe_result, promoted=false)
+   Promotion into `sources` is a deliberate manual step, not automatic.
    Never writes back to config/ — the owner's files stay theirs.
 ```
 
@@ -501,3 +512,45 @@ Cleanup: deleted the leftover deliberately-bad WF-0 test fixture, all throwaway 
 **Phase 3's core error-handling work is done and independently verified live.** Remaining Phase 3 items
 are process, not code: weekly workflow export to git via the n8n REST API, and a deliberate chaos test
 (dead token mid-run recovers unattended).
+
+### 2026-08-14 — Phase 4 begins: WF-1d discover built and verified; a real WF-L0 bug found and fixed
+
+Asked about better Indian-market sources before starting Phase 4 proper. Checked four candidates
+(Internshala, Wellfound, Cutshort, Hirist) for real rather than assuming — none integrate compliantly
+(robots.txt blocks, no public API, or wrong-direction API); full reasoning in `DECISIONS.md`. Along the
+way found the stored "SerpAPI account" n8n credential is the wrong type entirely for WF-1b's needs (it's a
+deprecated LangChain agent-tool credential, not usable from a plain HTTP node) — had the owner recreate it
+as `httpQueryAuth`.
+
+Built **WF-1d discover**. Tested the plan's own assumption (guess a company's ATS token from its name)
+against 49 real, currently-hiring India-based YC companies before writing the workflow: 0 hits across all
+six platforms. Traced why (real board tokens often come from the legal entity name, not the brand — e.g.
+Razorpay's real Greenhouse token is `razorpaysoftwareprivatelimited`) and found what actually works
+instead: extracting the real ATS link from the company's own `/careers` or `/jobs` page, then confirming it
+against the real provider API. Built WF-1d on that mechanism instead of the originally-sketched one.
+
+Two real, non-obvious bugs found building and testing WF-1d against the live instance:
+- n8n's Code node sandbox doesn't expose the `URL` constructor — `new URL(...)` inside a `try/catch`
+  silently swallowed every item with no visible error, identical-looking to a genuine zero-result batch.
+  Fixed with a plain regex instead.
+- **A real, latent bug in WF-L0 itself**, affecting every one of its callers (WF-1, WF-2, and now WF-1d),
+  not just this new workflow. Read n8n's own `ExecuteWorkflow.node.js` source: a `source: database` call in
+  `mode: once` returns literally whatever the sub-workflow's own last-executed node output was — branches
+  included. Phase 3's fallback-alarm addition gave WF-L0 a second, competing terminal node, so n8n's own
+  internal bookkeeping non-deterministically picked either the intended `Finalize` node or the wrong one
+  (an IF node's raw two-branch shape) as "the" result — confirmed by pulling raw execution data for real
+  calls: WF-1's historical call got lucky (1 branch), WF-1d's didn't (2 branches, real data stranded on the
+  branch nothing was listening to). Fixed by restructuring WF-L0 so it has exactly one true terminal node
+  again (`Is Fallback Alarm?` now runs sequentially before `Is Fresh?`, reconverging through a `Merge`
+  node) — the fix lives entirely in WF-L0's own file, so WF-1 and WF-2 needed no changes and are
+  automatically safe now too. Full writeup, including how to check any future sub-workflow graph for this
+  same trap, in `DECISIONS.md`.
+
+Verified WF-1d for real, end to end, after both fixes: 49 real candidates considered, 3 genuine ATS boards
+discovered and confirmed — Bolna AI (Ashby), Razorpay (Greenhouse), Weekday (Workable) — a real ~6% hit
+rate on the very first live run. WF-1d left `active: false`, same standing policy as WF-1, pending the
+owner's decision to turn on weekly external traffic to company career pages.
+
+**Next:** WF-1b collect-aggregators (JSearch + SerpApi `google_jobs`, now that the credential is fixed),
+then WF-1c collect-pages, then probing Keka/Darwinbox/Zoho Recruit and a free-tier usage projection —
+rounding out Phase 4.

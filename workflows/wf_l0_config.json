@@ -132,7 +132,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const decided = $('Decide Outcome').item.json;\n\nif (decided.outcome === 'hard_fail_alarm') {\n  throw new Error('WF-L0: config fetch failed for ' + decided.file + ' and no cached fallback exists');\n}\n\nreturn [{ json: { file: decided.file, config: decided.config, outcome: decided.outcome } }];"
+        "jsCode": "const decided = $('Decide Outcome').all()[0].json;\n\nif (decided.outcome === 'hard_fail_alarm') {\n  throw new Error('WF-L0: config fetch failed for ' + decided.file + ' and no cached fallback exists');\n}\n\nreturn [{ json: { file: decided.file, config: decided.config, outcome: decided.outcome } }];"
       }
     },
     {
@@ -189,6 +189,35 @@
         },
         "mode": "once"
       }
+    },
+    {
+      "id": "d4e5f607-1111-4022-f233-4444eeeeffff",
+      "name": "Restore Payload After Alarm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        560
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Call WF-5's own return value is irrelevant here -- it's a side effect\n// (sends the alarm). Re-emit the real Decide Outcome payload so the caller\n// still gets valid config data, not WF-5's response shape.\nreturn $('Decide Outcome').all();"
+      }
+    },
+    {
+      "id": "e5f60718-2222-4033-0344-5555ffff0000",
+      "name": "Merge Before Finalize",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1980,
+        430
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
     }
   ],
   "connections": {
@@ -229,11 +258,6 @@
       "main": [
         [
           {
-            "node": "Is Fresh?",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Is Fallback Alarm?",
             "type": "main",
             "index": 0
@@ -250,7 +274,13 @@
             "index": 0
           }
         ],
-        []
+        [
+          {
+            "node": "Merge Before Finalize",
+            "type": "main",
+            "index": 1
+          }
+        ]
       ]
     },
     "Build Fallback Alarm Payload": {
@@ -258,6 +288,39 @@
         [
           {
             "node": "Call WF-5 (fallback alarm)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-5 (fallback alarm)": {
+      "main": [
+        [
+          {
+            "node": "Restore Payload After Alarm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Payload After Alarm": {
+      "main": [
+        [
+          {
+            "node": "Merge Before Finalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Before Finalize": {
+      "main": [
+        [
+          {
+            "node": "Is Fresh?",
             "type": "main",
             "index": 0
           }

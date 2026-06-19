@@ -80,9 +80,8 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-14.*
 
-**Phase: 2 complete. Phase 3 (Reliability) core done — error handling, zero-result alarm, and
-config-fetch alarm all built and verified live. Two process items remain (weekly workflow export, chaos
-test) plus the standing WF-1-activation decision.**
+**Phase: 2 and 3 (core) complete. Phase 4 (Ingestion breadth) started — WF-1d discover built and verified
+live. WF-1b, WF-1c, and the remaining Phase 4 items are next.**
 
 | Item | State |
 |---|---|
@@ -92,16 +91,17 @@ test) plus the standing WF-1-activation decision.**
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
 | Postgres | **Running.** `placementpilot-postgres-1`, healthy, schema applied — 14 tables confirmed. Host port **5433**, not 5432 (a native Postgres Windows service already held 5432 — see `docker-compose.yml` comment). |
 | n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. Owner account created. `workflows/` bind-mounted into the container at `/home/node/workflows` so the CLI (`import:workflow`/`execute`/`publish:workflow`) can build and test directly against it — no API key needed. |
-| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth 403 resolved. Still needed: Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord Bot, SerpApi, Gmail, **Anthropic**, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
+| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth 403 resolved. Still needed: Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord Bot, SerpApi (**wrong type, see below**), a new **Query Auth** credential for SerpApi's real HTTP calls, Gmail, **Anthropic**, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
 | Scaffolding | `db/schema.sql` (14 tables; `evaluations` gained `deadline`/`eligibility` columns in Phase 2), `docker-compose.yml`, `.env.example`, `config/*`, `prompts/v1.md`, `SETUP.md` all written. |
-| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` is an **`$env` var** (`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml`) — **not** `$vars`; n8n Variables turned out to be license-gated on this instance and silently resolves to `undefined` rather than erroring. See `DECISIONS.md` 2026-08-14 "Correction: n8n Variables are license-gated." |
-| Workflows | **Phase 1 + Phase 2 complete; Phase 3 core complete.** All seven workflows (WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5) built, imported, published, and tested against the live instance, real ATS APIs, real Anthropic, and real Discord. 145 real postings landed in Phase 1; in Phase 2, real postings were scored by Claude Haiku (95, 82) with real Discord alerts confirmed, including verbatim-extracted `deadline`/`eligibility`. This session (Phase 3) root-caused and fixed a real bug that had every `source: database` Execute Workflow call failing outside CLI-style testing: `executeWorkflow` nodes at `typeVersion 1.2` need `workflowId` as a resource-locator object, not a bare ID string — fixed across all six call sites, verified via genuine (non-manual) executions. Built and live-verified WF-1's zero-result alarm (per-source `runs` rows + `consecutive_zero` tracking, real alarm fired for 3 real dead sources) and WF-L0's fallback-fetch alarm (real Discord alarm while the caller still got cached data successfully). Full details in `DECISIONS.md` and `FLOW.md` "Changed this session" 2026-08-14. WF-1 is `active: false` — left for the user to switch on (briefly flipped `true` as an unintended side effect of a CLI publish this session, caught and reverted within the same restart cycle before any real hourly fire occurred — see `DECISIONS.md`). |
+| Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**, plus **3 more discovered live by WF-1d** (Bolna AI, Razorpay, Weekday — not yet promoted into `sources.json`, sitting in `discovered_sources`). `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` is an **`$env` var** (`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml`) — **not** `$vars`; n8n Variables turned out to be license-gated on this instance and silently resolves to `undefined` rather than erroring. See `DECISIONS.md` 2026-08-14 "Correction: n8n Variables are license-gated." |
+| Workflows | **Phase 1 + Phase 2 complete; Phase 3 core complete; Phase 4 started.** Eight workflows now built and verified live: WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5, and (new this session) **WF-1d discover**. 145 real postings landed in Phase 1; in Phase 2, real postings were scored by Claude Haiku (95, 82) with real Discord alerts confirmed. Phase 3 fixed a real bug that had every `source: database` Execute Workflow call failing outside CLI-style testing (`workflowId` needs a resource-locator object, not a bare string) and built WF-1's zero-result alarm plus WF-L0's fallback-fetch alarm. **This session (Phase 4)** researched four candidate Indian job sources and rejected all four after real verification (robots.txt blocks, no compliant API — see `DECISIONS.md`), fixed the SerpAPI credential (was the wrong n8n type entirely, unusable by a plain HTTP node), and built **WF-1d discover**: tested and rejected naive ATS-token-guessing (0/49 real hits), built career-page-link extraction instead (3/49 real, confirmed hits on the first live run — Bolna AI/Ashby, Razorpay/Greenhouse, Weekday/Workable). Also found and fixed a **real, latent bug in WF-L0 itself** — two competing terminal nodes were making `executeWorkflow` non-deterministically corrupt its output for every caller (WF-1, WF-2, WF-1d), not just a WF-1d-specific issue; fixed inside WF-L0 alone, so no changes were needed to WF-1's or WF-2's own files. Full details in `DECISIONS.md` and `FLOW.md` "Changed this session" 2026-08-14. WF-1 and WF-1d are both `active: false` — left for the user to switch on. |
 
 **Blocked on the user:** Adzuna + Jooble signups · real free-tier limits for the aggregators already
 created · entering RapidAPI/JSearch + Careerjet credentials into the n8n store · starter company list
 approval · deleting the stray `client_secret_*.json` from the repo root once the Google credential is
-safely in n8n · **decide whether to activate WF-1** (starts real hourly external traffic + real Discord
-alerts) now that Phase 2 and Phase 3's core reliability work are both verified end-to-end.
+safely in n8n · **decide whether to activate WF-1 and/or WF-1d** (real hourly ATS traffic / real weekly
+external traffic to company career pages respectively) · decide whether to promote the 3 WF-1d-discovered
+sources into `sources.json`.
 
 ---
 
@@ -234,8 +234,16 @@ Unfinished items are never deleted. New work is added here.
 - [ ] Chaos test: dead token mid-run recovers unattended
 
 ### Phase 4 — Ingestion breadth
-- [ ] WF-1d discover — accelerator portfolios → ATS endpoint probing → `discovered_sources`
-- [ ] WF-1b collect-aggregators — quota-gated, query set from preferences
+- [x] WF-1d discover — accelerator portfolios → career-page link extraction → confirmed via real ATS
+      probe → `discovered_sources`. Naive token-guessing (the originally-sketched approach) was tested
+      first and measured 0/49 real hits; career-page-link extraction replaced it and found 3/49 confirmed
+      real boards on the first live run (Bolna AI, Razorpay, Weekday). Along the way found and fixed a
+      real latent bug in WF-L0 (two competing terminal nodes corrupting `executeWorkflow` output
+      non-deterministically for every caller) — see `DECISIONS.md` 2026-08-14. **Not yet activated**
+      (`active: false`) — starts real weekly external traffic to company career pages once switched on.
+- [ ] WF-1b collect-aggregators — quota-gated, query set from preferences. SerpAPI credential was the
+      wrong n8n type (a deprecated LangChain agent-tool credential, unusable by a plain HTTP node) —
+      fixed, a new `httpQueryAuth` credential now exists for real `google_jobs` HTTP calls.
 - [ ] WF-1c collect-pages — robots-aware fetch, conditional requests, LLM extraction
 - [ ] Probe Keka / Darwinbox / Zoho Recruit for public endpoints
 - [ ] Verify projected monthly usage inside every free tier
@@ -508,3 +516,43 @@ WhatsApp as a second channel · more aggregators · public write-up
   deliberate chaos test (dead token mid-run recovers unattended). Next: either those two items, or
   Phase 4 (ingestion breadth), or activating WF-1 — all now genuinely the user's call to make, not gated
   on anything broken.
+
+### 2026-08-14 — Phase 4 begins: four Indian sources rejected, WF-1d built, a real WF-L0 bug fixed
+
+- User asked which sources would better cover the Indian market beyond what's already planned. First-pass
+  answer named Internshala, Wellfound, Cutshort, Hirist — none checked yet. User asked to integrate them
+  and continue Phase 4. Checked all four for real before building anything, matching this project's
+  standing discipline: **none integrate compliantly.** Internshala's own `robots.txt` disallows exactly
+  the search/details pages a scraper would need, for any bot. Wellfound has no public API anymore, only
+  paid third-party scrapers. Cutshort's real API is B2B recruiter tooling (search candidates), not a jobs
+  feed. Hirist has no public API either. Also checked whether SerpApi's `google_jobs` engine could target
+  a specific site indirectly — it has no domain-restriction parameter at all. Full reasoning in
+  `DECISIONS.md`; no new source config added for any of the four.
+- Investigating that led to a real, unrelated finding: the "SerpAPI account" n8n credential already in the
+  store was never usable by a plain HTTP node — it's the credential type for a deprecated, hidden
+  LangChain AI-agent tool node, not a generic API key. Had the user create a new `httpQueryAuth` credential
+  instead, which WF-1b will actually be able to use.
+- **Built WF-1d discover.** `accelerators.json`'s own comment sketched "probe ATS token patterns" as the
+  mechanism — tested this against 49 real, currently-hiring India-based YC companies before writing any
+  workflow code: **0 hits across all six ATS platforms.** Traced why with a real example (Razorpay's
+  actual Greenhouse token is `razorpaysoftwareprivatelimited`, their legal entity name, not `razorpay`)
+  and found what actually works: the company's own `/careers` or `/jobs` page almost always links its
+  real ATS board directly, so WF-1d extracts the token from that link instead of guessing it, then
+  confirms it against the real provider API before registering it.
+- Building and testing WF-1d against the live instance surfaced two more real bugs: n8n's Code node
+  sandbox doesn't expose the `URL` constructor (silently swallowed every item via a `try/catch`, looking
+  identical to a genuine zero-result batch), and — more significantly — **a real, latent bug in WF-L0
+  itself**, not specific to WF-1d at all. Phase 3's fallback-alarm addition gave WF-L0 two competing
+  terminal nodes; n8n's `executeWorkflow` node returns literally whatever the sub-workflow's own
+  last-executed node output was, so which of the two "won" was non-deterministic — meaning **WF-1's and
+  WF-2's existing calls to WF-L0 had been at risk since Phase 3, not just WF-1d's new one**, and had only
+  looked fine by luck of execution timing. Fixed inside WF-L0 alone (restructured so `Finalize` is
+  unambiguously the only terminal node), so WF-1 and WF-2 needed no changes and are automatically correct
+  now too. Full technical writeup in `DECISIONS.md` — including a general check ("exactly one node with no
+  outgoing connections") worth re-running on WF-L0/WF-L1/WF-2/WF-3 any time their graphs change again.
+- **Verified WF-1d for real, end to end**: 49 real candidates considered, 3 genuine ATS boards discovered
+  and confirmed (Bolna AI/Ashby, Razorpay/Greenhouse, Weekday/Workable) — a real ~6% hit rate on the very
+  first live run, not a projection. Left `active: false`, same standing policy as WF-1.
+- **Next:** WF-1b collect-aggregators (JSearch + SerpApi `google_jobs`, credential now fixed), then WF-1c
+  collect-pages, then probing Keka/Darwinbox/Zoho Recruit and a free-tier usage projection to round out
+  Phase 4.

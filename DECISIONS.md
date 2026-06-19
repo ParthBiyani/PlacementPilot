@@ -640,3 +640,180 @@ together, not just one half of it.
 workflow, the zero-result alarm, the config-fetch-failure alarm — are now built and independently verified
 live. Remaining Phase 3 items are process, not code: weekly workflow export to git via the n8n REST API,
 and a deliberate chaos test (dead token mid-run recovers unattended).
+
+---
+
+## 2026-08-14 — Four candidate Indian job sources rejected after real verification, not assumption
+
+**Context.** The owner asked about better sources for the Indian market. A first-pass recommendation named
+four: Internshala, Wellfound (formerly AngelList Talent), Cutshort, Hirist. None were verified before being
+suggested — checking them for real, the same discipline this project has used for every ATS endpoint since
+Phase 0, changed the answer.
+
+**Decision.** None of the four are being integrated.
+- **Internshala** — `robots.txt`, fetched directly (not summarized), disallows `/internship/search/`,
+  `/internship/details/`, `/job/search/`, `/job/details/` under `User-Agent: *` — the exact pages a scraper
+  would need. CLAUDE.md's polite-fetching rule requires honouring `robots.txt`; this isn't a judgment call.
+- **Wellfound** — no official public jobs API exists anymore (the old AngelList Talent API is gone); every
+  option found is a paid third-party scraper. Breaks both the no-scraping-without-permission principle and
+  the $0/month goal (P4).
+- **Cutshort** — has a real, documented API (`developers.cutshort.io`), but it's a B2B recruiter tool for
+  *searching candidates* and managing applications, not a jobs feed for candidates. Wrong direction.
+- **Hirist** — same as Wellfound: no public API, third-party scrapers only.
+- **Indirect route via SerpApi's `google_jobs` engine also doesn't work** — confirmed from SerpApi's own
+  docs, that engine has no `site:`/domain-restriction parameter at all, only free-text `q` plus location/
+  language. There's no way to target a specific job board through it, in either direction.
+
+**Why.** Recommending a source without checking whether it can actually be integrated compliantly wastes
+build time and risks shipping something that violates the project's own non-goals (no bot-detection evasion,
+no scraping against `robots.txt`). Better to find this out before writing a single node than after.
+
+**Consequences.** No new config for these four. The existing Phase 4 plan (WF-1b's licensed aggregators,
+which already carry LinkedIn/Naukri/Indeed coverage, plus WF-1d's accelerator-portfolio discovery) remains
+the legitimate path to broader Indian-market coverage. If a genuinely compliant path to any of these four
+turns up later (e.g. Wellfound ships a real public API), revisit then — not before.
+
+---
+
+## 2026-08-14 — The stored "SerpAPI account" credential was the wrong type for what WF-1b needs
+
+**Context.** Investigating the SerpApi-based routing idea above required understanding how the existing
+"SerpAPI account" n8n credential (type `serpApi`) actually gets used. It turned out to not be usable by a
+plain HTTP Request node at all.
+
+**Decision.** Traced the credential type to `@n8n/n8n-nodes-langchain`'s `ToolSerpApi` node — a
+**deprecated, hidden** AI-agent tool sub-node (`outputs: [NodeConnectionTypes.AiTool]`, no regular data
+output) meant to be wired into an Agent's tool list, not called directly in a linear workflow. It calls
+`@langchain/community`'s generic Google Search wrapper (not the `google_jobs` engine) and returns
+LLM-tool-formatted text, not structured JSON. A plain `httpRequest` node's authentication dropdown only
+accepts generic types (`httpQueryAuth`, `httpHeaderAuth`, etc.) — it cannot select a `serpApi`-typed
+credential at all. Had the owner create a new credential of type **Query Auth** (`httpQueryAuth`, param
+name `api_key`) holding the same key, which a normal HTTP Request node can attach and use to call
+`serpapi.com/search.json?engine=google_jobs&...` directly.
+
+**Why.** This would have blocked WF-1b regardless of the Indian-sources question — it's specific to how
+this n8n instance's credential was originally created, not to any particular query. Worth catching now
+rather than mid-build.
+
+**Consequences.** WF-1b's SerpApi calls must use the `httpQueryAuth` credential, not the original `serpApi`
+one (left in the store, unused, harmless). Any future SerpApi credential should be created as `httpQueryAuth`
+from the start.
+
+---
+
+## 2026-08-14 — WF-1d discover: naive ATS token-guessing yields ~0%; career-page link extraction works
+
+**Context.** `accelerators.json`'s own comment sketched WF-1d as "extract company names and domains, then
+probe ATS token patterns for each." Before building that, tested the assumption against real data: 49 real,
+currently-hiring, India-located YC companies, guessing each one's Greenhouse/Lever/Ashby/Workable/
+SmartRecruiters/Recruitee token from its YC `slug` field.
+
+**Decision.** Naive slug-guessing is not the mechanism WF-1d uses. **Zero hits out of 49 companies across
+all six platforms.** Traced why with a real example: Razorpay's actual Greenhouse token is
+`razorpaysoftwareprivatelimited` (their full legal entity name), not `razorpay` — board tokens are chosen
+by whoever set up the ATS account and are frequently unrelated to the brand slug. What does work, verified
+on the same company: Razorpay's own `/careers` (well, `/jobs/` in their case) page directly links their
+real Greenhouse URL in plain HTML — `curl` with a normal user-agent sees it fine, no JS rendering needed.
+WF-1d now: for each India-located, currently-hiring, Active company from an enabled `json`-method
+accelerator, tries three candidate career-page paths (`/careers`, `/jobs`, homepage), regex-extracts a
+known ATS domain link from whichever page responds, then **confirms** the extracted token against the real
+provider API pattern (the same `boards-api.greenhouse.io`-style patterns WF-1 already uses) before
+registering it — so a confidently-wrong regex match still gets caught by the same 200-or-nothing check
+WF-1's own fetchers rely on.
+
+**Why.** Building the naive version first would have shipped a workflow that discovers almost nothing,
+directly contradicting the project's "usefulness first" priority. Verified for real: WF-1d's first live run
+found and confirmed 3 genuine boards (Bolna AI/Ashby, Razorpay/Greenhouse, Weekday/Workable) out of 49
+candidates — a real ~6% hit rate, not a guess, and one that compounds every week as more accelerators get
+enabled.
+
+**Consequences.** `accelerators.json`'s own comment describing "probe ATS token patterns" is now
+technically stale (the token comes from an extracted link, not a guess) but the *outcome* it describes
+(boards that respond get registered in `discovered_sources`) is unchanged, so left as-is rather than
+rewritten for a wording nuance. Any future accelerator enabled with `method: "json"` gets this same
+treatment automatically; `method: "html"` accelerators (Techstars, Antler, etc.) still need their own
+extraction logic before enabling, unchanged from the original design.
+
+---
+
+## 2026-08-14 — n8n Code node sandbox has no `URL` global; two silent-zero-item bugs found building WF-1d
+
+**Context.** WF-1d's `Build Career Page Candidates` node used `new URL(j.website).origin` to derive each
+company's domain, wrapped in a `try/catch` that `continue`s past parse failures (reasonable defensive
+coding for genuinely malformed URLs). It silently produced zero output items against 49 items of
+demonstrably valid input (`https://razorpay.com`, `http://dripcapital.com`, ...).
+
+**Decision.** n8n's Code node sandbox does not expose the `URL` constructor — `new URL(...)` throws
+`ReferenceError: URL is not defined` for every single call, and the `try/catch` (there for a different,
+legitimate reason) swallowed it silently, producing the exact same symptom as a genuine zero-result batch:
+no error surfaced anywhere, node shows a clean green checkmark, just zero items out. Fixed by replacing it
+with a plain regex (`/^https?:\/\/[^\/]+/i`) that has no dependency on sandbox-provided globals.
+
+**Why.** This is the third distinct flavor of "silent zero items, no visible error" found in this project
+(the others: zero-item branches never reaching a downstream node at all, and n8n's `getWorkflowInfo()`
+resolving `workflowId` to `undefined` from a malformed parameter shape) — each looks identical from the
+canvas (a clean run, just an early stop) but has a completely different root cause. Diagnosing this one
+required reading the raw `execution_data` row directly from Postgres rather than trusting the canvas UI,
+since the UI simply doesn't distinguish "zero items because nothing matched" from "zero items because every
+iteration silently threw."
+
+**Consequences.** Standing rule: **never assume a Node.js/browser global is available inside an n8n Code
+node** — only what's been seen working in this project's own tests (`JSON`, regex, plain string/array/
+object methods, `Math`, `Date`) should be assumed present. If a genuinely new built-in is needed, verify it
+with a throwaway one-line test node first rather than discovering the gap via a silently-empty downstream
+node. Also worth remembering generally: a `try/catch` written to handle one failure mode can just as easily
+swallow a completely different one, silently — when a batch produces suspiciously exact "0 of N" output,
+suspect the catch block before suspecting the input data.
+
+---
+
+## 2026-08-14 — WF-L0 had two competing terminal nodes, corrupting `executeWorkflow`'s output non-deterministically
+
+**Context.** WF-1d's `Call WF-L0` node — built with the exact same, by-then-already-fixed resource-locator
+`workflowId` shape used everywhere else — still failed silently, with nothing downstream of it ever firing.
+Unlike every other case this project has hit, the node itself showed a clean green checkmark with real,
+correct-looking data in its output panel, which is what made this one genuinely hard to catch: the bug
+wasn't in the caller at all.
+
+**Decision.** Read n8n's own `ExecuteWorkflow.node.js` source directly: in `mode: "once"`, the node's
+`execute()` method sets `workflowResult = executionResult.data` and returns it as-is — `executionResult.data`
+is literally **the sub-workflow's own last-executed node's raw output array, branches included**. WF-L0
+used to have exactly one terminal node (`Finalize`), so this was never visible. Earlier this session, Phase
+3's fallback-alarm fix added a **second**, parallel terminal node (`Call WF-5 (fallback alarm)`, reached
+whenever `Is Fallback Alarm?`'s condition was true, with its false branch simply dangling with no further
+connections). With two competing "last node" candidates, n8n's own bookkeeping non-deterministically picked
+either `Finalize` (giving callers the intended `{file, config, outcome}` shape) or `Is Fallback Alarm?`
+itself (an IF node — giving callers its raw two-branch `[[], [items]]` shape instead). Confirmed empirically
+by pulling raw `execution_data` for three different real calls: WF-1's historical call showed 1 branch
+(lucky), WF-1d's showed 2 branches with real data stranded on index 1 (unlucky) — same target workflow,
+same caller-side parameters, different result, purely from WF-L0's own internal ambiguity. **Fixed by
+restructuring WF-L0 so `Is Fallback Alarm?` runs *before* `Is Fresh?` instead of in parallel with it**, both
+paths reconverging through a `Merge` node (append mode, matching the existing WF-2 cache-hit/cache-miss
+merge pattern) before continuing to the original `Is Fresh?` → `Upsert Cache`/`Finalize` chain — so
+`Finalize` is unambiguously the only node in the whole graph with no outgoing connections. `Call WF-5`'s own
+return value is irrelevant to the caller (it's a side effect, the alarm), so a small `Restore Payload After
+Alarm` node re-emits `Decide Outcome`'s original data after the alarm call completes, rather than letting
+WF-5's response shape leak into the main data path.
+
+**Why.** This was a real, latent correctness bug affecting **every** caller of WF-L0 (WF-1, WF-2, and now
+WF-1d) from the moment the fallback-alarm branch was added earlier this session — WF-1's and WF-2's
+"success" in the interim was luck of n8n's internal execution-order bookkeeping, not evidence the calls were
+actually safe. It would have been trivial to reintroduce on any future workflow that adds a second dangling
+terminal branch to a sub-workflow already called via `source: database`.
+
+**Consequences.** Standing rule for every `executeWorkflowTrigger`-entry sub-workflow (WF-L0, WF-L1, WF-2,
+WF-3, and any future one): **must have exactly one node with no outgoing connections.** Verify this
+explicitly (as done here — walk the connections graph, list nodes absent as a connection source or with
+every branch empty) any time a new parallel branch is added to a workflow that other workflows call via
+`source: database`. This check is now baked into how WF-1d's own connections were validated before import,
+and should be repeated for WF-L0/WF-L1/WF-2/WF-3 any time their graphs change again. No changes were needed
+to WF-1's or WF-2's own JSON — the fix lives entirely in WF-L0, so every caller is automatically corrected.
+
+**Side finding, not the actual cause but worth recording:** opening a node's detail panel in the n8n editor
+to inspect its output (asked of the owner mid-debugging, before the real cause above was found) resulted in
+a `workflowInputs`/`mappingMode: "defineBelow"` block appearing in that node's *stored* parameters that was
+never written to the source JSON file — this instance has autosave enabled by default
+(`workflows.autosaveDisabled = false`), so merely viewing a node can persist a UI-side default back into
+the database, silently diverging from the committed file. Re-importing from the clean file removed it and
+is the correct recovery — but it's a real trap for CLI-driven development: after any UI inspection session,
+re-import before trusting that the live workflow still matches the repo.
