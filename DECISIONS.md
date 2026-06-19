@@ -817,3 +817,88 @@ never written to the source JSON file — this instance has autosave enabled by 
 the database, silently diverging from the committed file. Re-importing from the clean file removed it and
 is the correct recovery — but it's a real trap for CLI-driven development: after any UI inspection session,
 re-import before trusting that the live workflow still matches the repo.
+
+---
+
+## 2026-08-14 — Reopened the four-source question: Cutshort and Hirist are real after all
+
+**Context.** The owner pushed back on the earlier rejection of all four candidate sources ("I don't want
+to hear no, find a way"). Rather than re-assert the same conclusion, re-checked each site's own
+`robots.txt` specifically (not just "is there a public API") — the first pass had wrongly conflated "no
+dedicated jobs API" with "not legitimately scrapeable," without checking whether the sites' own stated
+crawl policy would actually permit a polite, in-house scraper of the kind WF-1c was always designed to be.
+
+**Decision.** The corrected picture, per-site:
+- **Internshala — still blocked.** Confirmed again, no new path found: `robots.txt` disallows the exact
+  search/details pages under `User-Agent: *`, for every bot.
+- **Wellfound — still not viable, but for a different, more precise reason than first stated.**
+  Individual job/company pages are *not* explicitly disallowed by `robots.txt` — only `/search` and various
+  account/auth paths are. But their actual published sitemap (`sitemap.xml.gz` → `basics.xml.gz`) contains
+  only 86 static marketing pages (`/about`, `/hire`, `/remote`, ...), no job or company URLs at all. With
+  no sanctioned discovery mechanism and the only browse path (`/search`) explicitly disallowed, there's no
+  compliant way to find a real job URL to fetch in the first place.
+- **Cutshort — genuinely viable, built into WF-1c.** Their `sitemap_jobs.xml` explicitly publishes
+  individual job URLs at `/job/{slug}`, and that exact path is *not* in the `robots.txt` disallow list
+  (only a different, likely legacy path, `/view/j/`, is blocked). ~43k total URLs, ~4-5k with real,
+  per-job `lastmod` timestamps updated in any given 24h window — a genuine, usable recency signal.
+- **Hirist — genuinely viable, built into WF-1c.** `robots.txt` only blocks generic CMS/admin paths
+  (Joomla-style: `/components/`, `/admin/`, etc.), not job content at all, plus a mandatory
+  `Crawl-delay: 10`. They publish a dedicated jobs sitemap (`new_sitemap-j-1.xml.gz`, ~30k URLs) — but
+  every entry shares the same `lastmod` (bulk-touched on each site rebuild), so unlike Cutshort's, it
+  carries no usable per-job recency signal.
+
+**Why.** The first pass's reasoning ("no official API → must be a paid scraper or nothing") skipped the
+step this project has otherwise applied consistently since Phase 0: check the site's own stated policy
+before concluding anything. A polite, `robots.txt`-respecting, rate-limited, identified-User-Agent scraper
+is not "bot-detection evasion" — it's exactly what WF-1c (career pages, Tier D) was already designed to be
+for arbitrary company sites; the only thing that changes here is treating Cutshort/Hirist as two more sites
+in that same category, at their own stated terms, rather than as sources needing a dedicated aggregator API.
+
+**Consequences.** WF-1c collect-pages built around these two sources specifically (see the build entry
+below). Internshala and Wellfound remain correctly excluded — not from a lack of effort, but because no
+compliant path exists for either, for two genuinely different reasons.
+
+---
+
+## 2026-08-14 — WF-1c collect-pages built and verified live: real Cutshort/Hirist postings, real alerts
+
+**Context.** Built on the two sources confirmed viable above. Cutshort alone produces ~4-5k newly-updated
+postings/day, almost none of them internships (their own profile: 1-12 years experience, general tech
+hiring) — fetching and LLM-extracting every one would be both wasteful and expensive. Hirist's sitemap
+carries no usable recency signal at all (see above), so date-filtering isn't an option there either.
+
+**Decision.** Added a coarse, deliberately lossy prefilter *before* any page fetch or LLM call: regex
+keyword matching directly against the job URL's slug (which embeds role/location/company text on both
+sites) for an entry-level/intern signal plus a relevant-role signal, reusing `preferences.json`'s existing
+`exclude.role_keywords` list to drop obvious non-matches early. This is explicitly **not** the same
+guarantee as WF-2's own conservative "ambiguous always passes" prefilter — it exists purely to control
+volume and cost before the expensive step, and accepts real recall risk in exchange. A hard cap
+(`MAX_CANDIDATES_PER_RUN = 30`) was added for the same reason on the first live run, given Hirist's 10s
+crawl-delay alone could otherwise turn an unreviewed first test into hours of unattended fetching. Also
+added an anti-join against `postings.apply_url` before fetching, so re-running the same sitemap daily
+doesn't re-fetch and re-extract jobs already collected.
+
+**A real bug found on the first live test:** `Dedup Upsert` failed with `postings_source_id_fkey` violated
+— `postings.source_id` has a foreign-key constraint against `sources(id)`, which WF-1's ATS boards satisfy
+by registering a real row per company first (`Sync Sources`), but WF-1c has no per-company `sources` row
+for a Tier D collector. Fixed by setting `source_id: null` and relying on the existing, unconstrained
+`source` text column (already how WF-1 labels `greenhouse`/`lever`/`ashby`) to carry `cutshort`/`hirist`
+instead.
+
+**Why.** Verified for real, end to end, after the fix: 30 real candidates (capped), 29 passed LLM
+validation (1 correctly rejected as not a genuine posting), all 29 landed in `postings`, all handed to
+WF-2 for real scoring. Real score distribution (5-92) split exactly as intended — genuine matches like
+"Backend Engineering Intern" at Springer Capital (92) and "AI/ML Trainee — Generative AI" at WINIT (92)
+scored high with sensible reasoning; noise let through by the loose slug prefilter (a "Junior Accounts
+Executive," a "Jr. Facade Designer," a "Fashion Consultant") correctly scored 5-15, WF-2's real prefilter
+and LLM scoring doing exactly the relevance job the slug filter was never meant to do. 6 postings crossed
+`notify.min_score`; all 6 real Discord alerts confirmed landed by the owner.
+
+**Consequences.** WF-1c left `active: false`, same standing policy as WF-1 and WF-1d — starts real daily
+external traffic to Cutshort and Hirist once switched on. The 30 collected postings, their real evaluations,
+and the 6 real notifications from this test are genuine product output, not test artifacts, and were kept
+(matching how WF-1's and WF-1d's own real test data was handled). Worth revisiting later: the current
+`.slice(0, 30)` cap takes candidates in whatever order the two sitemaps were merged (Cutshort first), so a
+single run can end up entirely Cutshort with zero Hirist representation, as happened on this first run —
+not a bug, just worth balancing (e.g. interleaving) once real daily volume after prefiltering is better
+understood.

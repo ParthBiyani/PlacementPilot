@@ -20,7 +20,7 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-0` selftest | Schedule Trigger | daily | ✅ |
 | `WF-1` collect-ats | Schedule Trigger | hourly | ✅ (built, tested; **not yet activated**) |
 | `WF-1b` collect-aggregators | Schedule Trigger | daily | ⬜ |
-| `WF-1c` collect-pages | Schedule Trigger | daily | ⬜ |
+| `WF-1c` collect-pages | Schedule Trigger | daily | ✅ (built, tested; **not yet activated**) |
 | `WF-1d` discover | Schedule Trigger | weekly | ✅ (built, tested; **not yet activated**) |
 | `WF-2` score | Execute Workflow (from collectors) | per batch | ✅ |
 | `WF-3` notify | Execute Workflow (from WF-2) | per posting | ✅ |
@@ -150,6 +150,38 @@ Discord ──► Webhook (public, via tunnel)
                   └─► Discord: edit original message in place
 ```
 
+### Career pages — `WF-1c`
+```
+Schedule (daily)
+  └─► WF-L0 → preferences.json (exclude.role_keywords)
+      ├─► Fetch cutshort.io/sitemap_jobs.xml → keep entries with real
+      │   per-job lastmod in the last 24h (~4-5k/day; their own lastmod
+      │   values are genuine, unlike Hirist's)
+      └─► Fetch hirist.tech's jobs sitemap → ALL entries (lastmod is
+          bulk-touched on every site rebuild, same value for every URL,
+          not usable for date filtering)
+              └─► Merge → slug keyword prefilter (coarse, lossy — controls
+                  volume/cost before the expensive step below, NOT the
+                  same guarantee as WF-2's own conservative prefilter)
+                  → cap at MAX_CANDIDATES_PER_RUN
+                      └─► anti-join vs postings.apply_url (skip already-
+                          collected) → politely fetch each page (1 req/s
+                          Cutshort, mandatory 10s wait per Hirist request)
+                          └─► Anthropic: extract {company, role, location,
+                              employment_type, description, posted_date}
+                              from stripped page text, or {not_a_posting}
+                              └─► WF-L1 normalize → dedup upsert
+                                  (source_id always NULL here — no
+                                  per-company sources row exists for a
+                                  Tier D collector, unlike WF-1's ATS
+                                  boards; source text column carries
+                                  'cutshort'/'hirist' instead)
+                                  └─► WF-2 score (only genuinely new postings)
+```
+`robots_cache` (schema.sql) isn't used by this build — Cutshort's and Hirist's `robots.txt` were checked
+by hand before building, not re-verified live per run, and there's no ETag/conditional-request layer on
+the sitemap fetches yet. Worth adding if a third Tier D source needs the same treatment.
+
 ### Gmail — `WF-4`
 ```
 Gmail Trigger (15m, read-only)
@@ -247,7 +279,7 @@ graph a tree with two utility leaves rather than a mesh.
 | `runs` | everything | `WF-5`, queries |
 | `api_quota` | `WF-1b` | `WF-1b` (checked *before* spending) |
 | `config_cache` | `WF-L0` | `WF-L0` |
-| `robots_cache` | `WF-1c` | `WF-1c` |
+| `robots_cache` | — | — (not used — see note) |
 | `prompts` | manual, `WF-6` promotion | `WF-2` |
 | `eval_runs` | `WF-6` | promotion gate |
 | `test_fixtures` | seed | `WF-0` |
@@ -554,3 +586,33 @@ owner's decision to turn on weekly external traffic to company career pages.
 **Next:** WF-1b collect-aggregators (JSearch + SerpApi `google_jobs`, now that the credential is fixed),
 then WF-1c collect-pages, then probing Keka/Darwinbox/Zoho Recruit and a free-tier usage projection —
 rounding out Phase 4.
+
+### 2026-08-14 — Reopened and resolved: Cutshort + Hirist really do work; WF-1c built and verified live
+
+Owner pushed back on the earlier rejection of all four candidate sources. Re-checked each site's own
+`robots.txt` specifically rather than re-asserting the first answer — the first pass had wrongly equated
+"no dedicated jobs API" with "not scrapeable," without checking whether a plain, polite, `robots.txt`-
+respecting scraper (exactly what WF-1c was always designed to be for arbitrary company career pages) would
+actually be permitted. It would, for two of the four: Cutshort publishes `sitemap_jobs.xml` with real job
+URLs at a path their own `robots.txt` doesn't block; Hirist's `robots.txt` only blocks generic CMS/admin
+paths, not job content, plus a mandatory 10s crawl-delay. Internshala and Wellfound remain genuinely
+blocked, each for a different specific reason (explicit disallow on the needed pages; no discoverable job
+URLs at all despite individual pages not being disallowed). Full reasoning in `DECISIONS.md`.
+
+Built **WF-1c collect-pages** around Cutshort and Hirist. Added a coarse, deliberately lossy slug-keyword
+prefilter before any page fetch (Cutshort alone produces ~4-5k newly-updated postings/day, almost none of
+them internships) plus a hard per-run cap, given Hirist's sitemap has no usable date field at all (every
+entry shares the same bulk-touched `lastmod`) and its 10s-per-request crawl-delay could otherwise turn an
+unreviewed first run into hours of unattended fetching.
+
+First live test found a real bug: `Dedup Upsert` failed on `postings_source_id_fkey` — WF-1c has no
+per-company `sources` row the way WF-1's ATS boards do (via `Sync Sources`), so `source_id` must be `NULL`
+here, with the existing unconstrained `source` text column carrying `cutshort`/`hirist` instead. Fixed and
+re-verified: 30 real candidates, 29 passed LLM validation, all 29 landed in `postings`, real scores from
+WF-2 ranged 5-92 and split exactly as intended (genuine intern matches scored high with sensible reasoning,
+noise the loose slug filter let through — an "Accounts Executive," a "Fashion Consultant" — correctly
+scored 5-15). 6 postings crossed the notify threshold; all 6 real Discord alerts confirmed landed.
+
+WF-1c left `active: false`, same standing policy as WF-1 and WF-1d. **Phase 4 status:** WF-1d and WF-1c
+both built and verified live; WF-1b (aggregators) and the Keka/Darwinbox/Zoho Recruit probe + free-tier
+usage projection remain.

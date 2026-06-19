@@ -1,0 +1,339 @@
+{
+  "id": "c1c5e0f3a2b4d6789",
+  "name": "WF-1c collect-pages",
+  "nodes": [
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 400],
+      "parameters": {
+        "rule": { "interval": [{ "field": "days" }] }
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000002",
+      "name": "Request Preferences Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { file: 'preferences.json' } }];"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000003",
+      "name": "Call WF-L0",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [640, 400],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "8e45da373fd94a90", "mode": "id" },
+        "mode": "once"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000004",
+      "name": "Fetch Cutshort Sitemap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [860, 260],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "https://cutshort.io/sitemap_jobs.xml",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job collection)\"}",
+        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 30000 }
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000005",
+      "name": "Parse Cutshort Sitemap",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 260],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const resp = $input.first().json;\nif (resp.statusCode !== 200) return [];\nconst body = typeof resp.body === 'string' ? resp.body : (typeof resp.data === 'string' ? resp.data : '');\n\n// Cutshort's own lastmod values are real per-job timestamps (unlike Hirist's,\n// which are bulk-touched on every site rebuild -- see Parse Hirist Sitemap).\n// Only entries updated in the last 24h keep daily volume sane.\nconst cutoff = Date.now() - 24 * 60 * 60 * 1000;\nconst re = /<url>\\s*<loc>([^<]+)<\\/loc>\\s*<lastmod>([^<]+)<\\/lastmod>/g;\nconst out = [];\nlet m;\nwhile ((m = re.exec(body)) !== null) {\n  const [, loc, lastmod] = m;\n  const t = Date.parse(lastmod);\n  if (!isNaN(t) && t > cutoff) {\n    out.push({ json: { source: 'cutshort', url: loc } });\n  }\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000006",
+      "name": "Fetch Hirist Sitemap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [860, 540],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "https://www.hirist.tech/new_sitemap-j-1.xml.gz",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job collection)\", \"Accept-Encoding\": \"gzip\"}",
+        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 30000 }
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000007",
+      "name": "Parse Hirist Sitemap",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 540],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const resp = $input.first().json;\nif (resp.statusCode !== 200) return [];\nconst body = typeof resp.body === 'string' ? resp.body : (typeof resp.data === 'string' ? resp.data : '');\n\n// Hirist's lastmod is bulk-touched on every sitemap regen (all entries share\n// the same timestamp) -- not usable for date filtering, unlike Cutshort's.\n// Volume control here relies entirely on the slug keyword prefilter plus the\n// already-collected check downstream, not on recency.\nconst re = /<loc>([^<]+)<\\/loc>/g;\nconst out = [];\nlet m;\nwhile ((m = re.exec(body)) !== null) {\n  out.push({ json: { source: 'hirist', url: m[1] } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000008",
+      "name": "Merge Sitemaps",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1300, 400],
+      "parameters": { "mode": "append", "numberInputs": 2 }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000009",
+      "name": "Slug Keyword Prefilter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Coarse, lossy pre-fetch filter driven by the URL slug alone (company/\n// role/location text embedded in the job URL) -- NOT the same guarantee as\n// WF-2's conservative \"ambiguous always passes\" prefilter. This one exists\n// purely to control volume before an expensive fetch+LLM step (Cutshort\n// alone has ~4-5k new postings/day, almost none of them internships), so\n// real recall risk is accepted here deliberately. WF-2's own prefilter and\n// LLM scoring still run on whatever survives this.\nconst prefs = ($('Call WF-L0').first().json.config) || {};\nconst excludeTerms = ((prefs.exclude || {}).role_keywords || []).map(s => s.toLowerCase());\n\nconst SENIORITY_SIGNALS = ['intern', 'internship', 'fresher', 'trainee', 'graduate', 'campus', 'entry-level', 'entry level', 'junior', '0-1-years', '0-1-yrs'];\nconst ROLE_SIGNALS = ['software', 'backend', 'frontend', 'full-stack', 'fullstack', 'developer', 'engineer', 'sde', 'data', 'machine-learning', 'machine learning', 'ml-', 'ai-', ' ai ', 'python', 'analyst'];\n\n// Hard per-run cap. Hirist's sitemap has no usable date field to narrow by\n// (see Parse Hirist Sitemap), so without this a single run could produce\n// hundreds of candidates -- each Hirist fetch alone costs a mandatory 10s\n// wait, so this bounds both real Anthropic spend and wall-clock time per\n// run to something a first, unattended daily run should never exceed.\n// Raise deliberately once real daily volume after prefiltering is known.\nconst MAX_CANDIDATES_PER_RUN = 30;\n\nconst matched = $input.all().filter(item => {\n  const slug = decodeURIComponent(item.json.url).toLowerCase().replace(/[-_]/g, ' ');\n  if (excludeTerms.some(t => slug.includes(t))) return false;\n  const hasSeniority = SENIORITY_SIGNALS.some(t => slug.includes(t.replace(/-/g, ' ')));\n  const hasRole = ROLE_SIGNALS.some(t => slug.includes(t.replace(/-/g, ' ')));\n  return hasSeniority && hasRole;\n});\n\nreturn matched.slice(0, MAX_CANDIDATES_PER_RUN);"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-00000000000a",
+      "name": "Filter Already Collected",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1740, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT $1::text AS source, $2::text AS url WHERE NOT EXISTS (SELECT 1 FROM postings WHERE apply_url = $2)",
+        "additionalFields": { "queryParams": "source,url" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-00000000000b",
+      "name": "Fetch Job Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1960, 400],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "={{ $json.url }}",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job collection)\"}",
+        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 15000 }
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-00000000000c",
+      "name": "Wait Between Fetches",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2180, 400],
+      "webhookId": "b3f1e2d4-0001-4000-8000-00000000000c",
+      "parameters": {
+        "amount": "={{ $('Filter Already Collected').item.json.source === 'hirist' ? 10 : 1 }}",
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-00000000000d",
+      "name": "Strip HTML For LLM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 400],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $('Filter Already Collected').all()[$itemIndex].json;\nconst resp = $json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source: src.source, url: src.url, fetch_failed: true } };\n}\n\nconst raw = typeof resp.body === 'string' ? resp.body : (typeof resp.data === 'string' ? resp.data : '');\nlet text = raw\n  .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/\\s+/g, ' ')\n  .trim();\ntext = text.slice(0, 6000);\n\nreturn { json: { source: src.source, url: src.url, page_text: text } };"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-00000000000e",
+      "name": "Extract Job Details",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [2620, 400],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "={{ $json.page_text }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {
+          "system": "Extract job posting fields from the raw page text as JSON only, no prose, no markdown fences. Shape: {\"company\":string,\"role\":string,\"location\":string|null,\"employment_type\":\"internship\"|\"full_time\"|\"part_time\"|\"contract\"|null,\"description\":string,\"posted_date\":string|null}. employment_type must be inferred conservatively from explicit text (e.g. 'Internship', 'Full Time'), never guessed from role seniority. description should be the role's actual responsibilities/requirements text, trimmed, not the whole page. If this page is not a real job posting (e.g. a listing/search page, an error page), return {\"not_a_posting\": true}.",
+          "maxTokens": 800,
+          "temperature": 0
+        }
+      },
+      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-00000000000f",
+      "name": "Validate Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2840, 400],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const ctx = $('Strip HTML For LLM').all()[$itemIndex].json;\nif (ctx.fetch_failed) return { json: { skip: true } };\n\nconst content = $json.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\n\nlet parsed;\ntry {\n  const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  return { json: { skip: true } };\n}\n\nif (parsed.not_a_posting || !parsed.company || !parsed.role) {\n  return { json: { skip: true } };\n}\n\nreturn {\n  json: {\n    skip: false,\n    company: parsed.company,\n    role: parsed.role,\n    location: parsed.location || null,\n    employment_type: parsed.employment_type || null,\n    apply_url: ctx.url,\n    source: ctx.source,\n    source_id: null,\n    description: parsed.description || null,\n    posted_date: parsed.posted_date || null\n  }\n};"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000010",
+      "name": "Keep Valid Extractions",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [3060, 400],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            { "leftValue": "={{ $json.skip }}", "rightValue": true, "operator": { "type": "boolean", "operation": "notEquals" } }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000011",
+      "name": "Call WF-L1",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [3280, 400],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "773d1f4a0f6b4bf7", "mode": "id" },
+        "mode": "once"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000012",
+      "name": "Dedup Upsert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [3500, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, source_id, (xmax = 0) AS was_inserted",
+        "additionalFields": { "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000013",
+      "name": "Build Score Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3500, 620],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const dedupOutputs = $input.all();\nconst originals = $('Call WF-L1').all();\nconst toScore = [];\nfor (let i = 0; i < dedupOutputs.length; i++) {\n  if (dedupOutputs[i].json.was_inserted === true) {\n    toScore.push({ json: originals[i].json });\n  }\n}\nreturn toScore;"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000014",
+      "name": "Call WF-2",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [3720, 620],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "c4f8a29d1e6b3075", "mode": "id" },
+        "mode": "once"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000015",
+      "name": "Tally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3720, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "let candidates = 0, prefiltered = 0;\ntry { candidates = $('Merge Sitemaps').all().length; } catch (e) {}\ntry { prefiltered = $('Slug Keyword Prefilter').all().length; } catch (e) {}\nconst items = $input.all();\nconst fetched = items.length;\nconst inserted = items.filter(i => i.json.was_inserted === true).length;\nreturn [{ json: { candidates, prefiltered, fetched, new_count: inserted } }];"
+      }
+    },
+    {
+      "id": "f1a1b1c1-0001-4000-8000-000000000016",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [3940, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count, prefiltered) VALUES ('WF-1c', now(), now(), $1, $2, $3) RETURNING id",
+        "additionalFields": { "queryParams": "fetched,new_count,candidates" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Request Preferences Config", "type": "main", "index": 0 }]] },
+    "Request Preferences Config": { "main": [[{ "node": "Call WF-L0", "type": "main", "index": 0 }]] },
+    "Call WF-L0": {
+      "main": [[
+        { "node": "Fetch Cutshort Sitemap", "type": "main", "index": 0 },
+        { "node": "Fetch Hirist Sitemap", "type": "main", "index": 0 }
+      ]]
+    },
+    "Fetch Cutshort Sitemap": { "main": [[{ "node": "Parse Cutshort Sitemap", "type": "main", "index": 0 }]] },
+    "Parse Cutshort Sitemap": { "main": [[{ "node": "Merge Sitemaps", "type": "main", "index": 0 }]] },
+    "Fetch Hirist Sitemap": { "main": [[{ "node": "Parse Hirist Sitemap", "type": "main", "index": 0 }]] },
+    "Parse Hirist Sitemap": { "main": [[{ "node": "Merge Sitemaps", "type": "main", "index": 1 }]] },
+    "Merge Sitemaps": { "main": [[{ "node": "Slug Keyword Prefilter", "type": "main", "index": 0 }]] },
+    "Slug Keyword Prefilter": { "main": [[{ "node": "Filter Already Collected", "type": "main", "index": 0 }]] },
+    "Filter Already Collected": { "main": [[{ "node": "Fetch Job Page", "type": "main", "index": 0 }]] },
+    "Fetch Job Page": { "main": [[{ "node": "Wait Between Fetches", "type": "main", "index": 0 }]] },
+    "Wait Between Fetches": { "main": [[{ "node": "Strip HTML For LLM", "type": "main", "index": 0 }]] },
+    "Strip HTML For LLM": { "main": [[{ "node": "Extract Job Details", "type": "main", "index": 0 }]] },
+    "Extract Job Details": { "main": [[{ "node": "Validate Extraction", "type": "main", "index": 0 }]] },
+    "Validate Extraction": { "main": [[{ "node": "Keep Valid Extractions", "type": "main", "index": 0 }]] },
+    "Keep Valid Extractions": { "main": [[{ "node": "Call WF-L1", "type": "main", "index": 0 }]] },
+    "Call WF-L1": { "main": [[{ "node": "Dedup Upsert", "type": "main", "index": 0 }]] },
+    "Dedup Upsert": {
+      "main": [[
+        { "node": "Tally", "type": "main", "index": 0 },
+        { "node": "Build Score Payload", "type": "main", "index": 0 }
+      ]]
+    },
+    "Build Score Payload": { "main": [[{ "node": "Call WF-2", "type": "main", "index": 0 }]] },
+    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
+  },
+  "pinData": {}
+}
