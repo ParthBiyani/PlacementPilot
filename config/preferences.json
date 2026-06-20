@@ -73,5 +73,13 @@
     "data analyst intern india",
     "data engineer intern bangalore",
     "new grad software engineer india 2027"
+  ],
+
+  "x_search_queries": [
+    "site:x.com \"hiring\" \"software engineer intern\" india",
+    "site:x.com \"hiring\" \"backend developer intern\" india",
+    "site:x.com \"hiring\" \"machine learning intern\" OR \"ai intern\" india",
+    "site:x.com \"hiring\" \"data analyst intern\" OR \"data engineer intern\" india",
+    "site:x.com \"#hiring\" \"sde intern\" india"
   ]
 }
