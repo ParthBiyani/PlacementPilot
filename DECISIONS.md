@@ -902,3 +902,95 @@ and the 6 real notifications from this test are genuine product output, not test
 single run can end up entirely Cutshort with zero Hirist representation, as happened on this first run —
 not a bug, just worth balancing (e.g. interleaving) once real daily volume after prefiltering is better
 understood.
+
+---
+
+## 2026-08-14 — WF-1b collect-aggregators built and verified live against real SerpApi
+
+**Context.** JSearch has no credential in the n8n store yet (blocked on the user), so only SerpApi's
+`google_jobs` engine could be built and tested for real. Rather than guess JSearch's response shape to
+"complete" the workflow, its branch was scaffolded (config-gated, `enabled: false` in `sources.json`) but
+left genuinely unimplemented — repeating the mistake this project has avoided everywhere else (guessing an
+API shape instead of observing one) isn't worth it just to look more finished.
+
+**Two real n8n mechanics found while wiring the first credential-authenticated HTTP node this project has
+used** (every prior HTTP call hit an unauthenticated public endpoint):
+1. n8n's `httpQueryAuth` generic credential type has exactly two fields, "Name" and "Value" — and per its
+   own source (`HttpQueryAuth.credentials.js`), the "Name" field's *value* is used directly as the query
+   parameter key sent to the API (`requestOptions.qs[httpQueryAuth.name] = httpQueryAuth.value`). It is
+   **not** a separate display label distinct from a "parameter name" field — there is no such field. The
+   owner had (reasonably) entered a human-readable label ("SerpAPI query auth") there per my own earlier
+   instruction, which silently sent `?SerpAPI query auth=<key>` instead of `?api_key=<key>`, producing a
+   real "Invalid API key" 401 that had nothing to do with the key itself. Fixed by renaming that field to
+   literally `api_key`.
+2. SerpApi's `google_jobs` engine has a **documented, real** max response time of ~90 seconds (SerpApi's
+   own published benchmark: avg 15s, max 90.782s across 106 requests) — far outside what a first-guess
+   HTTP timeout (15s, then 45s) would tolerate. Confirmed via `wget` from inside the container that a
+   fast, correct 401 came back instantly for an invalid key on the same endpoint, ruling out a genuine
+   network/connectivity problem before raising the timeout to 100s and getting a real 200 with real data.
+
+**Real response shape, observed live (not assumed):** `jobs_results[]`, each with `company_name`, `title`,
+`location`, `source_link` (the real apply URL — more reliable than `share_link`, a Google-internal
+tracking redirect), `description`, and `detected_extensions: {posted_at, schedule_type}` (structured, e.g.
+`"Full–time"` — note the en-dash, not a hyphen, so substring matching rather than exact comparison is
+used for `employment_type` mapping).
+
+**Quota.** `api_quota` keyed by `(provider, period_month)`, checked before spending via the same
+guaranteed-row LEFT JOIN pattern as WF-L0's `Get Cached`. Config's `monthly_limit` (currently 250 for
+SerpApi, matching the vendor-doc figure already in `sources.json`) is the source of truth; `api_quota.used`
+just tracks consumption against it. Query count is capped by `remaining` before any call is made, not
+after, so a run can never overspend even if it dies partway through.
+
+**Consequences.** Verified live: 7 real `google_jobs` queries, 30 real postings landed, all correctly
+deduplicated and scored, 2 real Discord alerts confirmed by the owner. `config/sources.json`'s `serpapi`
+entry flipped to `enabled: true` and pushed — this is a real, functioning Tier C source now, not a stub.
+JSearch stays `enabled: false` until its credential exists and its real response shape has actually been
+observed.
+
+---
+
+## 2026-08-14 — X/Twitter: direct access is blocked twice over; Google-indexed tweets via SerpApi work
+
+**Context.** Owner asked to integrate X/Twitter as a source immediately after the WF-1b build above.
+Checked it the same way as the earlier four candidates before concluding anything.
+
+**Decision.** Direct access to X is not viable, for two independent reasons: `robots.txt` carries a
+blanket `Disallow: /` under `User-agent: *` (only Googlebot/Bingbot/facebookexternalhit are named, and
+even they're restricted to narrow paths — there's no carve-out analogous to Cutshort's open `/job/` path);
+and the official X API dropped its free tier entirely in February 2026 (pay-per-use, $0.005/read, no free
+allowance for new developers), which would violate the project's own $0/month goal (P4) as an ongoing cost,
+not a one-time signup. The owner asked to find a free path anyway rather than accept a paid API.
+
+**What actually works: querying Google itself, not X.** Googlebot is one of the few crawlers X's
+`robots.txt` grants any access to, so a `site:x.com "hiring" ...`-style query through SerpApi's plain
+`google` engine (not `google_jobs`, which has no site-filter at all — see the earlier rejected-sources
+entry) returns real organic search results whose snippets already contain enough hiring-post text to
+extract a posting from, with zero requests ever sent to x.com/twitter.com. This is the same category of
+solution as Cutshort/Hirist: not scraping the blocked site, just reading what a fully compliant, licensed
+third party (Google, via SerpApi) already surfaced publicly. Verified with a real call before building
+anything: real hiring tweets came back (e.g. "Intuit is hiring a Software Engineer intern... Salary:
+₹50,000/month"), filtered to individual `/status/<id>` tweet links only — account/profile-page results
+(e.g. an aggregator account's bio mashing multiple openings into one snippet) aren't reliably extractable
+as a single posting and are dropped.
+
+**Quota is shared, not separate.** X-search draws from the *same* `serpapi` provider's 250/month budget as
+`google_jobs`, since it's the same underlying account and key — modeling it as an independent quota bucket
+would have let combined usage silently exceed the real cap. With `google_jobs` already at ~7 queries/day
+(~210/month), there's only ~40/month of headroom, so X-search runs **weekly, not daily** (a handful of
+queries, gated on `new Date().getUTCDay() === 0`), keeping combined usage safely under 250. Unlike
+`jobs_results`, organic search snippets are unstructured prose, so extraction goes through Anthropic Haiku
+(same pattern as WF-1c) rather than being parsed directly.
+
+**A real bug found on first test:** the new `x_search_queries` config field never reached the query
+builder — `Combine Configs` forwarded only `{aggregators, queries}`, silently dropping the new field
+before it ever got read downstream. Not a timing or caching issue (checked and ruled out `config_cache`
+staleness first) — just a field that was added to the config schema but never added to the one node that
+was supposed to forward it. Fixed by adding `x_search_queries` to `Combine Configs`'s output. A day-of-week
+gate this specific (`getUTCDay() === 0`) also can't be verified on its normal schedule without waiting a
+full week, so it was tested with a temporary forced-on override on a real execution, confirmed working,
+then reverted — the override was never committed.
+
+**Consequences.** Verified live, end to end, after the fix: 12 real SerpApi calls (7 job + 5 X-search), 22
+real X-sourced postings extracted and landed in `postings`, 8 crossed the notify threshold, all 8 real
+Discord alerts confirmed by the owner. `source = 'serpapi_x'` distinguishes these from `google_jobs`-
+sourced postings (`source = 'serpapi'`) in case the two ever need different handling later.

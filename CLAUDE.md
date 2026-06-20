@@ -80,8 +80,8 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-14.*
 
-**Phase: 2 and 3 (core) complete. Phase 4 (Ingestion breadth) in progress — WF-1d discover and WF-1c
-collect-pages both built and verified live. WF-1b and the remaining Phase 4 items are next.**
+**Phase: 2 and 3 (core) complete. Phase 4 (Ingestion breadth) in progress — WF-1d, WF-1c, and WF-1b all
+built and verified live. Remaining Phase 4 items: Keka/Darwinbox/Zoho Recruit probe, free-tier projection.**
 
 | Item | State |
 |---|---|
@@ -94,7 +94,7 @@ collect-pages both built and verified live. WF-1b and the remaining Phase 4 item
 | Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth 403 resolved. Still needed: Adzuna, Jooble. Real free-tier limits not yet recorded in `config/sources.json` (still vendor-doc placeholders). n8n credential store has Discord Bot, SerpApi (**wrong type, see below**), a new **Query Auth** credential for SerpApi's real HTTP calls, Gmail, **Anthropic**, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). |
 | Scaffolding | `db/schema.sql` (14 tables; `evaluations` gained `deadline`/`eligibility` columns in Phase 2), `docker-compose.yml`, `.env.example`, `config/*`, `prompts/v1.md`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**, plus **3 more discovered live by WF-1d** (Bolna AI, Razorpay, Weekday — not yet promoted into `sources.json`, sitting in `discovered_sources`). `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` is an **`$env` var** (`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml`) — **not** `$vars`; n8n Variables turned out to be license-gated on this instance and silently resolves to `undefined` rather than erroring. See `DECISIONS.md` 2026-08-14 "Correction: n8n Variables are license-gated." |
-| Workflows | **Phase 1 + Phase 2 complete; Phase 3 core complete; Phase 4 in progress.** Nine workflows now built and verified live: WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5, **WF-1d discover**, **WF-1c collect-pages**. 145 real postings landed in Phase 1; in Phase 2, real postings were scored by Claude Haiku with real Discord alerts confirmed. Phase 3 fixed a real bug that had every `source: database` Execute Workflow call failing outside CLI-style testing and built WF-1's zero-result alarm plus WF-L0's fallback-fetch alarm. **This session (Phase 4)** researched four candidate Indian job sources (Internshala, Wellfound, Cutshort, Hirist); first pass rejected all four, but re-checking each site's own `robots.txt` after the owner pushed back found **Cutshort and Hirist are genuinely viable** (real job sitemaps, job-content paths not disallowed) — Internshala and Wellfound remain correctly blocked, each for a distinct, verified reason. Fixed the SerpAPI credential (was the wrong n8n type entirely). Built **WF-1d discover**: rejected naive ATS-token-guessing (0/49 real hits) in favor of career-page-link extraction (3/49 real confirmed hits — Bolna AI, Razorpay, Weekday). Along the way found and fixed a **real, latent bug in WF-L0 itself** — two competing terminal nodes made `executeWorkflow` non-deterministically corrupt its output for every caller (WF-1, WF-2, not just WF-1d); fixed inside WF-L0 alone. Built **WF-1c collect-pages** around Cutshort + Hirist: slug-keyword prefilter for volume control, polite rate-limited fetching (10s crawl-delay honored for Hirist), Anthropic extraction, verified live end-to-end — 30 real candidates, 29 valid extractions, real scores 5-92, **6 real Discord alerts confirmed landed**. Full details in `DECISIONS.md` and `FLOW.md` "Changed this session" 2026-08-14. WF-1, WF-1d, and WF-1c are all `active: false` — left for the user to switch on. |
+| Workflows | **Phase 1 + Phase 2 complete; Phase 3 core complete; Phase 4 in progress.** Ten workflows now built and verified live: WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5, **WF-1d discover**, **WF-1c collect-pages**, **WF-1b collect-aggregators**. Phase 3 fixed a real bug that had every `source: database` Execute Workflow call failing outside CLI-style testing and built WF-1's zero-result alarm plus WF-L0's fallback-fetch alarm. **Phase 4 (this session):** researched six candidate sources total (Internshala, Wellfound, Cutshort, Hirist, then X/Twitter) — **Cutshort, Hirist, and Google-indexed X/Twitter content are genuinely viable** (verified via each site's own `robots.txt`, not assumption); Internshala, Wellfound, and direct X access remain correctly blocked, each for a distinct, verified reason (see `DECISIONS.md`). Fixed the SerpAPI credential twice (wrong n8n credential type entirely, then a wrong "Name" field value that silently broke auth). Built **WF-1d discover** (career-page-link extraction, 3/49 real confirmed ATS boards — Bolna AI, Razorpay, Weekday) and along the way found and fixed a **real, latent bug in WF-L0 itself** that was non-deterministically corrupting `executeWorkflow`'s output for every caller (WF-1, WF-2, not just WF-1d). Built **WF-1c collect-pages** (Cutshort + Hirist, slug-keyword prefilter, 30 real candidates → 29 valid extractions → 6 real Discord alerts). Built **WF-1b collect-aggregators** (SerpApi `google_jobs`, 30 real postings, 2 real alerts) then extended it with a Google-search-based X/Twitter source sharing the same quota bucket, gated weekly (22 real postings, 8 real alerts). JSearch stays scaffolded but unbuilt — no credential, real response shape never observed. Full details in `DECISIONS.md` and `FLOW.md` "Changed this session" 2026-08-14. WF-1, WF-1d, WF-1c, and WF-1b are all `active: false` — left for the user to switch on. |
 
 **Blocked on the user:** Adzuna + Jooble signups · real free-tier limits for the aggregators already
 created · entering RapidAPI/JSearch + Careerjet credentials into the n8n store · starter company list
@@ -241,9 +241,15 @@ Unfinished items are never deleted. New work is added here.
       real latent bug in WF-L0 (two competing terminal nodes corrupting `executeWorkflow` output
       non-deterministically for every caller) — see `DECISIONS.md` 2026-08-14. **Not yet activated**
       (`active: false`) — starts real weekly external traffic to company career pages once switched on.
-- [ ] WF-1b collect-aggregators — quota-gated, query set from preferences. SerpAPI credential was the
-      wrong n8n type (a deprecated LangChain agent-tool credential, unusable by a plain HTTP node) —
-      fixed, a new `httpQueryAuth` credential now exists for real `google_jobs` HTTP calls.
+- [x] WF-1b collect-aggregators — quota-gated (shared `api_quota` bucket, checked before spending), query
+      set from `preferences.json`. SerpAPI credential fixed twice: wrong n8n type first (a deprecated
+      LangChain agent-tool credential), then a wrong "Name" field value once the right type existed (that
+      field *is* the query param key, not a separate label). Verified live: SerpApi `google_jobs` (30 real
+      postings, 2 alerts) plus a weekly Google-search-based X/Twitter branch sharing the same quota (22
+      real postings, 8 alerts) — X itself is unreachable (`robots.txt` blanket block + no free API tier),
+      but Googlebot-indexed tweet content via SerpApi's plain `google` engine works and never touches
+      x.com. JSearch scaffolded, `enabled: false` — no credential, no real response shape observed yet,
+      deliberately left unimplemented. See `DECISIONS.md` 2026-08-14.
 - [x] WF-1c collect-pages — robots-aware fetch (Cutshort + Hirist, both individually verified against
       their own `robots.txt` after the owner pushed back on an earlier wrong rejection), slug-keyword
       prefilter for volume/cost control, LLM extraction via Anthropic. Not conditional-request-based yet
@@ -598,3 +604,43 @@ WhatsApp as a second channel · more aggregators · public write-up
   notifications are genuine product output, kept (not test artifacts).
 - **Phase 4 status:** WF-1d and WF-1c both built and verified live. Remaining: WF-1b collect-aggregators,
   probing Keka/Darwinbox/Zoho Recruit, and a free-tier usage projection.
+
+### 2026-08-14 — WF-1b built (SerpApi verified live); X/Twitter added via Google search, not scraping
+
+- Built **WF-1b collect-aggregators** against SerpApi's `google_jobs` engine — the only aggregator with a
+  real credential right now. JSearch stays scaffolded and disabled rather than guessing its response shape.
+- Found two real n8n mechanics wiring the first credential-authenticated HTTP node this project has used:
+  the `httpQueryAuth` credential's "Name" field *is* the literal query parameter key sent to the API, not
+  a separate label — my own earlier instruction to name it "SerpAPI query auth" had silently been sending
+  `?SerpAPI query auth=<key>` instead of `?api_key=<key>`, producing a real "Invalid API key" 401 with
+  nothing wrong with the key itself. And `google_jobs` has a documented ~90s max response time in SerpApi's
+  own benchmarks — ruled out a real network problem first (confirmed a fast, correct 401 via `wget` from
+  inside the container) before raising the timeout and getting real data back.
+- **Verified live:** 7 real queries, 30 real postings, 2 real Discord alerts confirmed by the owner.
+  `sources.json`'s `serpapi` entry flipped to `enabled: true` and pushed.
+- User then asked to integrate X/Twitter immediately. Checked it the same way as the earlier four sources
+  rather than assuming: `robots.txt` blanket-blocks every generic bot (`Disallow: /` under `User-agent: *`,
+  no carve-out like Cutshort had), and the official API dropped its free tier entirely in February 2026
+  (pay-per-use, no free allowance) — a real ongoing cost, not a one-time signup, that would break the
+  project's own $0/month goal. Asked the user how they wanted to proceed rather than deciding unilaterally;
+  they asked for a free path anyway.
+- **Found one that's genuinely compliant:** Googlebot is one of the few crawlers X's own `robots.txt`
+  grants any access to, so querying *Google itself* (`site:x.com "hiring" ...` via SerpApi's plain `google`
+  engine, not `google_jobs` which has no site-filter at all) surfaces real hiring-tweet snippets — zero
+  requests ever sent to x.com. Same non-scraping logic as Cutshort/Hirist, one level more indirect. Wired
+  as a second SerpApi query type sharing the *same* quota bucket as `google_jobs` (same real account, same
+  250/month cap — modeling them separately would have silently allowed overspending the real shared
+  budget), running weekly rather than daily to leave headroom given `google_jobs` alone uses most of it.
+  Snippets are unstructured, so Anthropic extracts fields from them (same pattern as WF-1c).
+- **Real bug found on first test:** `x_search_queries` was added to the config schema but `Combine
+  Configs` only ever forwarded `{aggregators, queries}` — the new field silently never reached the query
+  builder, regardless of the weekly gate. Ruled out cache staleness first (checked `config_cache` directly
+  — it had the right data) before finding the actual gap. Fixed, then verified live with a temporary
+  forced-on override (the real gate only fires on Sundays, and today wasn't one) — confirmed working, then
+  reverted; the override itself was never committed.
+- **Verified live, end to end:** 22 real X-sourced postings, 8 crossed the notify threshold, all 8 real
+  Discord alerts confirmed by the owner. `source = 'serpapi_x'` distinguishes these from `google_jobs`
+  postings (`source = 'serpapi'`).
+- WF-1b left `active: false`, same standing policy as the other unactivated Phase 4 workflows.
+- **Phase 4 status:** WF-1d, WF-1c, and WF-1b all built and verified live. Remaining: probing
+  Keka/Darwinbox/Zoho Recruit and a free-tier usage projection across every provider.

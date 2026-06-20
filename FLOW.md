@@ -19,7 +19,7 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-L1` lib-normalize | Execute Workflow (called by others) | on demand | ✅ |
 | `WF-0` selftest | Schedule Trigger | daily | ✅ |
 | `WF-1` collect-ats | Schedule Trigger | hourly | ✅ (built, tested; **not yet activated**) |
-| `WF-1b` collect-aggregators | Schedule Trigger | daily | ⬜ |
+| `WF-1b` collect-aggregators | Schedule Trigger | daily | ✅ (SerpApi built+verified; JSearch scaffolded only — **not yet activated**) |
 | `WF-1c` collect-pages | Schedule Trigger | daily | ✅ (built, tested; **not yet activated**) |
 | `WF-1d` discover | Schedule Trigger | weekly | ✅ (built, tested; **not yet activated**) |
 | `WF-2` score | Execute Workflow (from collectors) | per batch | ✅ |
@@ -148,6 +148,34 @@ Discord ──► Webhook (public, via tunnel)
        └─ type 3 MESSAGE_COMPONENT
               └─► parse custom_id → Postgres UPDATE applications.status
                   └─► Discord: edit original message in place
+```
+
+### Aggregators — `WF-1b`
+```
+Schedule (daily)
+  └─► WF-L0 → sources.json (aggregators + monthly_limit) AND preferences.json
+      (queries + x_search_queries) — two separate Call WF-L0 invocations
+      └─► filter aggregators to enabled === true (currently: serpapi only;
+          jsearch scaffolded but disabled — no credential, real response
+          shape never observed, deliberately left unimplemented)
+          └─► check api_quota (guaranteed-row LEFT JOIN, same pattern as
+              WF-L0's Get Cached) → skip if used ≥ monthly_limit
+              └─► By Provider (switch)
+                  └─► SerpApi: build query list, capped by remaining quota
+                      ├─ type=job (google_jobs engine, daily, ~7/day):
+                      │  structured jobs_results[] parsed directly, no LLM
+                      └─ type=x_search (google engine w/ site:x.com, WEEKLY
+                         only — getUTCDay()===0 — shares the SAME quota
+                         bucket as the job queries above):
+                         organic_results[] filtered to individual /status/
+                         tweet links → Anthropic extracts company/role/
+                         location/employment_type from the snippet text
+                         (zero requests ever sent to x.com/twitter.com —
+                         see DECISIONS.md 2026-08-14)
+                  └─► (both routes reconverge) → WF-L1 normalize → dedup
+                      upsert (source_id always NULL — no per-company
+                      sources row for an aggregator, same as WF-1c) →
+                      update api_quota.used → WF-2 score
 ```
 
 ### Career pages — `WF-1c`
@@ -616,3 +644,33 @@ scored 5-15). 6 postings crossed the notify threshold; all 6 real Discord alerts
 WF-1c left `active: false`, same standing policy as WF-1 and WF-1d. **Phase 4 status:** WF-1d and WF-1c
 both built and verified live; WF-1b (aggregators) and the Keka/Darwinbox/Zoho Recruit probe + free-tier
 usage projection remain.
+
+### 2026-08-14 — WF-1b built (SerpApi, verified live); X/Twitter added via Google search, not scraping
+
+Built **WF-1b collect-aggregators** against SerpApi's `google_jobs` engine — the only aggregator with a
+real credential (JSearch stays scaffolded, `enabled: false`, its real response shape never observed).
+Found two real n8n mechanics along the way: the `httpQueryAuth` credential's "Name" field *is* the actual
+query parameter key sent to the API (not a separate label), which had silently been sending
+`?SerpAPI query auth=<key>` instead of `?api_key=<key>`; and `google_jobs` has a documented ~90s max
+response time, well outside a first-guess timeout. Real response shape observed live: `jobs_results[]`
+with `source_link` as the real apply URL and structured `detected_extensions`. Quota-gated against
+`api_quota` (guaranteed-row pattern, same as WF-L0's `Get Cached`), capped *before* spending, not after.
+Verified live: 7 real queries, 30 postings, 2 real Discord alerts confirmed. `sources.json`'s `serpapi`
+entry flipped to `enabled: true` and pushed.
+
+Owner then asked to integrate X/Twitter. Checked it the same way as the earlier four sources: `robots.txt`
+blanket-blocks every generic bot (no carve-out like Cutshort had), and the official API dropped its free
+tier entirely in Feb 2026. Owner asked for a free path anyway rather than a paid one. Found one: Googlebot
+*is* one of the few crawlers X grants any access to, so querying Google itself (`site:x.com "hiring" ...`
+via SerpApi's plain `google` engine) surfaces real hiring-tweet snippets with zero requests ever sent to
+x.com — the same non-scraping pattern that made Cutshort/Hirist legitimate, one level more indirect. Wired
+as a second SerpApi query type sharing the *same* quota bucket as `google_jobs` (not a separate one — same
+account, same real 250/month cap), running weekly rather than daily to leave headroom, with Anthropic
+extracting structured fields from the unstructured snippet text. Found and fixed a real bug on the first
+test — `x_search_queries` was added to the config schema but never forwarded by `Combine Configs`, so it
+silently never reached the query builder regardless of the day-of-week gate. Verified live after the fix
+(gate temporarily forced on for one real run, then reverted — never committed): 22 real X-sourced postings,
+8 real Discord alerts confirmed. Full reasoning for both in `DECISIONS.md`.
+
+WF-1b left `active: false`. **Phase 4 status:** WF-1d, WF-1c, and WF-1b all built and verified live.
+Remaining: probing Keka/Darwinbox/Zoho Recruit and a free-tier usage projection across every provider.
