@@ -25,7 +25,7 @@
 
   "aggregators": [
     { "provider": "jsearch",   "enabled": false, "monthly_limit": 200,  "_note": "RapidAPI. Carries LinkedIn, Indeed, Glassdoor, ZipRecruiter, Bayt." },
-    { "provider": "serpapi",   "enabled": false, "monthly_limit": 250,  "_note": "google_jobs engine. Google for Jobs indexes Naukri, LinkedIn, Indeed, Instahyre." },
+    { "provider": "serpapi",   "enabled": true,  "monthly_limit": 250,  "_note": "google_jobs engine. Google for Jobs indexes Naukri, LinkedIn, Indeed, Instahyre." },
     { "provider": "adzuna",    "enabled": false, "monthly_limit": 1000, "_note": "Broad aggregate." },
     { "provider": "jooble",    "enabled": false, "monthly_limit": 0,    "_note": "Confirm limit at signup, then set it." },
     { "provider": "careerjet", "enabled": false, "monthly_limit": 0,    "_note": "Confirm limit at signup, then set it." }
