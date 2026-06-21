@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
   missing_skills JSONB,
   deadline       TEXT,   -- free text as stated in the posting (e.g. 'Rolling', '2026-09-15'); null if not stated -- never inferred
   eligibility    TEXT,   -- free text as stated in the posting (e.g. 'Final year, CGPA 7.0+'); null if not stated -- never inferred
+  ctc_or_stipend TEXT,   -- free text as stated in the posting (e.g. '₹50,000/month', '12-18 LPA'); null if not stated -- never inferred
   input_tokens   INT,
   output_tokens  INT,
   cost_usd       NUMERIC(10,6),

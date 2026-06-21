@@ -994,3 +994,32 @@ then reverted — the override was never committed.
 real X-sourced postings extracted and landed in `postings`, 8 crossed the notify threshold, all 8 real
 Discord alerts confirmed by the owner. `source = 'serpapi_x'` distinguishes these from `google_jobs`-
 sourced postings (`source = 'serpapi'`) in case the two ever need different handling later.
+
+---
+
+## 2026-08-14 — Score contract extended with `ctc_or_stipend`, same verbatim-only pattern as before
+
+**Context.** Owner asked for CTC/stipend in the Discord message, mid-session, right after WF-1b/X-Twitter
+landed. Same category of request as the earlier `deadline`/`eligibility` addition (Phase 2) — bolt onto
+the existing scoring call rather than a separate pass, since the full posting text is already in front of
+the LLM.
+
+**Decision.** Added `ctc_or_stipend` to the JSON contract (nullable string, `prompts/v1.md`,
+`evaluations.ctc_or_stipend`), extracted **verbatim, never inferred** — same constraint as `deadline`/
+`eligibility`, for the same reason: an invented figure is actively worse than "Not stated." Threaded
+through every node that already carries `deadline`/`eligibility` (`Check Cache`, both `Validate Attempt`
+nodes, `Finalize From Attempt 1`, `Use Cached Evaluation`, `Persist Evaluation`, `Decide Notify`, WF-3's
+`Prepare Notification`/`Insert Notification`/`Build Embed`) — identical shape, identical pattern, no new
+mechanism needed.
+
+**Why.** Verified extraction with two real Anthropic calls against already-collected real postings with
+stipend text in their description: "Salary: 25k - 40k / month" → `"₹25,000–₹40,000/month"`, and "Expected
+Stipend: 2-3 LPA" → `"2-3 LPA"` (passed through verbatim where the source was already a clean figure).
+Neither test posting happened to cross the notify threshold (72 and 35), so the Discord embed's new
+`**CTC/Stipend:**` line wasn't independently re-confirmed against a live send this session — it uses the
+exact code pattern already visually confirmed for `deadline`/`eligibility` in Phase 2, so risk is low, but
+this is recorded as a known gap rather than silently claimed as fully verified.
+
+**Consequences.** Bumps `prompt_version` again (template text changed) — by design, same as every prior
+contract change: old cached scores are correctly treated as stale. `db/schema.sql` gained a nullable
+`ctc_or_stipend TEXT` column, applied live via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.

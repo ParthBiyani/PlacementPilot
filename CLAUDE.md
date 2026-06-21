@@ -644,3 +644,19 @@ WhatsApp as a second channel · more aggregators · public write-up
 - WF-1b left `active: false`, same standing policy as the other unactivated Phase 4 workflows.
 - **Phase 4 status:** WF-1d, WF-1c, and WF-1b all built and verified live. Remaining: probing
   Keka/Darwinbox/Zoho Recruit and a free-tier usage projection across every provider.
+- **Mid-session, unrelated to Phase 4:** owner asked to add CTC/stipend to the Discord alert. Added
+  `ctc_or_stipend` to WF-2's contract using the identical verbatim-only pattern already established for
+  `deadline`/`eligibility`, threaded through every node that carries those two. Verified extraction with
+  two real Anthropic calls against real stipend text ("Salary: 25k - 40k / month" → "₹25,000–₹40,000/
+  month"); neither test posting crossed the notify threshold, so the Discord embed's new line uses an
+  already-proven code pattern but wasn't independently re-confirmed against a live send this session —
+  recorded as a known gap, not silently claimed as fully verified, in `DECISIONS.md`.
+- Started probing Keka/Darwinbox/Zoho Recruit for a Greenhouse-style public per-company job API. Found
+  Darwinbox and Zoho Recruit both explicitly document that their APIs are privileged/OAuth-scoped only —
+  no public, tokenless per-company endpoint exists for either, unlike Greenhouse/Lever/Ashby/Workable/
+  SmartRecruiters/Recruitee. Keka does have real, discoverable per-company career pages
+  (`{company}.keka.com/careers/`, e.g. `oneplus.keka.com` — confirmed via `robots.txt`, which explicitly
+  *allows* `/careers` even though it blocks the rest of the subdomain) and the page's JS bundle references
+  a `/api/jobs/` path, but that path is actually a per-job-application uniqueness check (email/phone), not
+  a job-listing endpoint — the real listing call wasn't found by static analysis of the minified bundle and
+  needs actual browser DevTools network inspection to locate reliably. Left unfinished, picked up next.

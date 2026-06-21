@@ -96,8 +96,8 @@ Schedule (hourly)
            │     └─ miss → Anthropic "Score Posting" (Haiku, real API call)
            │                 ├─ Code: validate contract
            │                 │     { match_score 0-100, should_apply, reason ≤300,
-           │                 │       missing_skills ≤5, deadline, eligibility }
-           │                 │     deadline/eligibility: extracted verbatim, never inferred
+           │                 │       missing_skills ≤5, deadline, eligibility, ctc_or_stipend }
+           │                 │     deadline/eligibility/ctc_or_stipend: extracted verbatim, never inferred
            │                 │     ├─ valid   → Finalize From Attempt 1
            │                 │     └─ invalid → Score Posting Retry (error appended)
            │                 │                    → Validate Attempt 2 (final, either way)
@@ -125,7 +125,7 @@ Schedule (hourly)
                              ├─ Code "Build Embed": formats deadline (YYYY-MM-DD → "30th
                              │     Month, YYYY"; anything else, e.g. "Rolling", passes through)
                              └─ Discord: embed with company, role, location, type, deadline,
-                                eligibility, score, reason, missing skills, apply link
+                                eligibility, CTC/stipend, score, reason, missing skills, apply link
                                 (buttons are Phase 5 — WF-3b)
 ```
 
