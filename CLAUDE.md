@@ -80,8 +80,10 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-14.*
 
-**Phase: 2 and 3 (core) complete. Phase 4 (Ingestion breadth) in progress — WF-1d, WF-1c, and WF-1b all
-built and verified live. Remaining Phase 4 items: Keka/Darwinbox/Zoho Recruit probe, free-tier projection.**
+**Phase: 2, 3 (core), and 4 (Ingestion breadth) all complete.** WF-1d, WF-1c, and WF-1b all built and
+verified live; the Keka/Darwinbox/Zoho Recruit probe and free-tier usage projection are both done. Next
+is genuinely open: Phase 5 (Discord interactions), Phase 6/7 (gated on real operational data), or
+activating the built-but-dormant Phase 4 workflows — all the user's call.
 
 | Item | State |
 |---|---|
@@ -256,8 +258,19 @@ Unfinished items are never deleted. New work is added here.
       (`robots_cache` unused — see `FLOW.md`). Verified live: 30 real candidates, 29 valid extractions, 6
       real Discord alerts confirmed landed. Internshala and Wellfound remain excluded — genuinely blocked,
       not just unchecked. See `DECISIONS.md` 2026-08-14.
-- [ ] Probe Keka / Darwinbox / Zoho Recruit for public endpoints
-- [ ] Verify projected monthly usage inside every free tier
+- [x] Probe Keka / Darwinbox / Zoho Recruit for public endpoints — none offer a Greenhouse-style public
+      Tier A API. Darwinbox and Zoho Recruit both explicitly document OAuth-only, org-scoped access, no
+      public cross-tenant endpoint at all. Keka has real, `robots.txt`-permitted public per-company career
+      pages (`{company}.keka.com/careers/`), but the real job-listing API call wasn't locatable via static
+      JS-bundle analysis (only a per-job uniqueness-check endpoint was found) — would need live browser
+      DevTools inspection to finish; left as a future Tier D candidate, not Tier A. See `DECISIONS.md`.
+- [x] Verify projected monthly usage inside every free tier — using real observed data, not vendor-doc
+      guesses: SerpApi at ~93% of its 250/month cap by design (210 for daily `google_jobs` + ~21.5 for
+      weekly `x_search`, shared bucket); Anthropic at a real measured $0.00285/evaluation, projecting to
+      roughly $2.60–$5.15/month at realistic steady-state volume (this figure has real uncertainty — day
+      one's volume was inflated since every existing posting counted as new). Greenhouse/Lever/Ashby have
+      no quota concept at all. JSearch/Adzuna/Jooble/Careerjet remain unverified — no credentials exist yet.
+      See `DECISIONS.md`.
 
 ### Phase 5 — Discord interactions
 - [ ] WF-3b inbound — Ed25519 verification (import-free), PING response, status update
@@ -659,4 +672,17 @@ WhatsApp as a second channel · more aggregators · public write-up
   *allows* `/careers` even though it blocks the rest of the subdomain) and the page's JS bundle references
   a `/api/jobs/` path, but that path is actually a per-job-application uniqueness check (email/phone), not
   a job-listing endpoint — the real listing call wasn't found by static analysis of the minified bundle and
-  needs actual browser DevTools network inspection to locate reliably. Left unfinished, picked up next.
+  needs actual browser DevTools network inspection to locate reliably.
+- **Concluded the Keka/Darwinbox/Zoho probe.** Darwinbox and Zoho Recruit both explicitly document
+  OAuth-only, org-scoped API access in their own docs — no public cross-tenant endpoint exists for either,
+  confirmed rather than assumed. Keka stays a real, viable *future* Tier D candidate (career-page fetch +
+  LLM extraction, same as WF-1c) once its listing endpoint is found via a live browser session; not a Tier
+  A candidate for any of the three.
+- **Free-tier usage projection**, using real data from this session instead of vendor-doc guesses: SerpApi
+  is at ~93% of its shared 250/month cap by design (210 for daily `google_jobs` + ~21.5 for weekly
+  `x_search`) — very little headroom left. Anthropic's real measured cost is $0.00285/evaluation
+  (334 real evaluations, ~$1.04 total spend this session), projecting to roughly $2.60–$5.15/month at a
+  realistic steady-state volume — the one genuinely uncertain number here, since day one's volume was
+  inflated (everything counted as "new"). Greenhouse/Lever/Ashby have no quota concept. JSearch/Adzuna/
+  Jooble/Careerjet remain unverified — no credentials exist yet. Full numbers in `DECISIONS.md`.
+- **Phase 4 is now fully complete.**

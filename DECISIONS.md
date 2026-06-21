@@ -1023,3 +1023,76 @@ this is recorded as a known gap rather than silently claimed as fully verified.
 **Consequences.** Bumps `prompt_version` again (template text changed) — by design, same as every prior
 contract change: old cached scores are correctly treated as stale. `db/schema.sql` gained a nullable
 `ctc_or_stipend TEXT` column, applied live via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+
+---
+
+## 2026-08-14 — Keka/Darwinbox/Zoho Recruit: none offer a Greenhouse-style public Tier A API
+
+**Context.** Last Phase 4 TODO item: probe these three ATS platforms for a public, tokenless per-company
+job API analogous to Greenhouse/Lever/Ashby/Workable/SmartRecruiters/Recruitee — the pattern WF-1's whole
+Tier A design is built on.
+
+**Decision.** None of the three offer it.
+- **Darwinbox** — its own API documentation states outright that access is "privileged users only,
+  request-only basis." No public, cross-tenant endpoint exists at all.
+- **Zoho Recruit** — its own documentation confirms every API endpoint is scoped to the OAuth client's own
+  organization; there is no public cross-tenant endpoint, which is explicitly why third-party aggregators
+  consume the public career page HTML instead.
+- **Keka** — the only one of the three with a real, promising, `robots.txt`-permitted public per-company
+  career page (`{company}.keka.com/careers/`, e.g. `oneplus.keka.com` — confirmed via `robots.txt`, which
+  explicitly *allows* `/careers` while blocking the rest of the subdomain, and confirmed via real examples:
+  Fynd, Adda247, OnePlus, SmartDocs all host their hiring on Keka this way). But the page is a JS SPA, and
+  the real job-listing API call was not locatable via static analysis of the loaded bundle — only a
+  per-job application-uniqueness-check endpoint (`/api/jobs/{id}/isemailunique`) was found, not a listing
+  endpoint. Finding the real one would need live browser DevTools network inspection, not available here.
+
+**Why.** This isn't a gap in effort — all three were genuinely checked (their own docs for Darwinbox/Zoho,
+real `robots.txt` + real customer examples + bundle analysis for Keka) before concluding. It matches a
+pattern already seen twice this session (Cutshort, Hirist): most ATS/job platforms outside the
+Greenhouse/Lever/Ashby-style "big few" simply don't expose an open, per-company API the way those do —
+when they're reachable at all, it's via their rendered career page, not a documented public endpoint.
+
+**Consequences.** Keka companies remain a real, viable *future* Tier D target (same career-page-fetch +
+LLM-extraction pattern as WF-1c) once the actual listing endpoint is found or a browser-based inspection
+happens — just not a Tier A (WF-1-style token-probe) one. Darwinbox and Zoho Recruit customers would need
+the same Tier D treatment; neither was prioritized this session given WF-1c already covers two real
+sources and Phase 4's remaining budget went to the free-tier usage projection instead.
+
+---
+
+## 2026-08-14 — Free-tier usage projection, using real observed data instead of vendor-doc guesses
+
+**Context.** Last remaining Phase 4 item. With WF-1b/WF-1c/WF-1d now built and genuinely exercised this
+session, real cost/volume numbers exist for the first time — this projection uses those instead of the
+vendor-doc placeholders `sources.json` has carried since Phase 0.
+
+**Real, observed numbers this session:** 334 real Anthropic evaluations, average **$0.00285/posting
+scored** (Haiku pricing: $1/1M input + $5/1M output tokens), ~$1.04 total spend across all testing. SerpApi
+quota at 26/250 used this session (inflated by repeated test runs, not representative of steady-state
+daily usage).
+
+**Decision — SerpApi (shared `serpapi` bucket, 250/month cap).** By design: 7 `google_jobs` queries/day
+× 30 ≈ 210/month, plus 5 `x_search` queries/week × ~4.3 weeks ≈ 21.5/month = **~231.5/month, ~93% of the
+250 cap.** Tight but under — there is very little headroom left in this budget. Any future addition to
+either query list needs to come out of this same shared total, not be added on top of it.
+
+**Decision — Anthropic (not quota-capped, real ongoing $ cost).** Using the real observed $0.00285/
+evaluation: at a conservative 30-60 genuinely-new postings/day once the system settles past its inflated
+first-run volume (day one scored far more than a steady state would, since every existing posting counted
+as "new"), projected cost is **roughly $2.60–$5.15/month** — small, and explicitly outside the $0/month
+goal already (P4 excludes LLM tokens by design). This is the only meaningfully uncertain number here: it
+depends on real steady-state volume across WF-1/WF-1b/WF-1c combined, which isn't known until they've
+actually run unattended for a real stretch, not just test executions.
+
+**Decision — everything else.** Greenhouse/Lever/Ashby (WF-1's Tier A boards) are genuinely free, public,
+unauthenticated APIs with no quota concept at all — polite rate-limiting (already built) is the only
+constraint, not a spend cap. JSearch, Adzuna, Jooble, Careerjet remain unverified — no credential exists
+for any of them yet (JSearch scaffolded but disabled; the other three are still pending account signups,
+per CLAUDE.md's "Blocked on the user"), so their real free-tier limits are still the original vendor-doc
+placeholders from Phase 0, not measured.
+
+**Consequences.** `sources.json`'s `monthly_limit` figures for `serpapi` (250) are now confirmed accurate
+by real usage, not just vendor docs. The other three aggregators' limits stay flagged as unverified until
+those accounts exist. Given SerpApi is already near its cap, any decision to activate WF-1b for real,
+continuous daily operation should account for the fact that there's little room to add more queries later
+without either dropping some existing ones or accepting occasional skipped days near month-end.
