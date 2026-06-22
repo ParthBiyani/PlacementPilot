@@ -286,7 +286,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// JSearch's real response shape has never been verified against a live call --\n// no RapidAPI credential exists for it yet (see CLAUDE.md \"Blocked on the\n// user\"). This branch stays inert until sources.json's jsearch entry is\n// flipped to enabled AND a real httpHeaderAuth credential is created --\n// guessing the parser now would repeat the exact mistake this project has\n// deliberately avoided everywhere else. Do not enable without testing first.\nconst quota = $input.first().json;\nconst queries = ($('Combine Configs').all()[0].json.queries || []).slice(0, quota.remaining);\nreturn queries.map(q => ({ json: { provider: 'jsearch', query: q } }));"
+        "jsCode": "// Reuses the same query list as SerpApi -- own separate 200/month quota\n// (not shared with SerpApi's 250), so the existing quota-cap logic keeps\n// this safe even at the same daily query count.\nconst quota = $input.first().json;\nconst queries = ($('Combine Configs').all()[0].json.queries || []).slice(0, quota.remaining);\nreturn queries.map(q => ({ json: { provider: 'jsearch', query: q } }));"
       }
     },
     {
@@ -298,14 +298,15 @@
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
-        "url": "=https://jsearch.p.rapidapi.com/search?query={{ encodeURIComponent($json.query) }}&num_pages=1",
+        "url": "=https://jsearch.p.rapidapi.com/search-v2?query={{ encodeURIComponent($json.query) }}&num_pages=1&country=in&date_posted=week",
         "authentication": "headerAuth",
         "responseFormat": "string",
         "dataPropertyName": "data",
         "jsonParameters": true,
+        "headerParametersJson": "{\"X-RapidAPI-Host\": \"jsearch.p.rapidapi.com\"}",
         "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 30000 }
       },
-      "credentials": { "httpHeaderAuth": { "id": "PLACEHOLDER_NOT_YET_CREATED", "name": "JSearch RapidAPI (not yet created)" } }
+      "credentials": { "httpHeaderAuth": { "id": "sMw9OMpBtGHWjCLx", "name": "Header Auth account" } }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000011",
@@ -316,7 +317,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Unreachable in production while jsearch stays disabled in sources.json --\n// see the note on Build JSearch Queries. Left unimplemented deliberately\n// rather than guessing a response shape that's never been observed live.\nreturn [];"
+        "jsCode": "// Real shape confirmed live 2026-08-15 against /search-v2 (NOT /search, which\n// 404s on this account -- RapidAPI's own gateway rejects it before the\n// request even reaches JSearch, independent of key validity). Jobs sit at\n// data.jobs[], not data[] directly.\nfunction mapEmploymentType(s) {\n  if (!s) return null;\n  const t = s.toLowerCase();\n  if (t.includes('intern')) return 'internship';\n  if (t.includes('full')) return 'full_time';\n  if (t.includes('part')) return 'part_time';\n  if (t.includes('contract') || t.includes('temp')) return 'contract';\n  return null;\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const resp = item.json;\n  if (resp.statusCode !== 200) continue;\n  let parsed;\n  try {\n    const raw = typeof resp.body === 'string' ? resp.body : resp.data;\n    parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) {\n    continue;\n  }\n  const jobs = (parsed.data && parsed.data.jobs) || [];\n  for (const j of jobs) {\n    out.push({\n      json: {\n        company: j.employer_name,\n        role: j.job_title,\n        location: j.job_location || null,\n        employment_type: mapEmploymentType(j.job_employment_type),\n        apply_url: j.job_apply_link,\n        source: 'jsearch',\n        source_id: null,\n        description: j.job_description || null,\n        posted_date: j.job_posted_at_datetime_utc || null\n      }\n    });\n  }\n}\nreturn out;"
       }
     },
     {

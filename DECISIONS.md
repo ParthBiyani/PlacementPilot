@@ -1139,3 +1139,48 @@ Auth (API key as username, empty password) per its own docs, which maps directly
 unconfigured until the user creates the underlying accounts and enters credentials using the steps above;
 WF-1b's JSearch branch remains deliberately unimplemented until then (see the earlier WF-1b entry — still
 true, still the right call).
+
+---
+
+## 2026-08-15 — JSearch built and verified live: wrong credential type given first, real endpoint is /search-v2
+
+**Context.** With credentials now in place, built out WF-1b's previously-scaffolded, deliberately-inert
+JSearch branch for real.
+
+**Decision — credential type, corrected.** Initially instructed the user to create a **Custom Auth**
+credential (needed since JSearch requires two headers, `X-RapidAPI-Key` and `X-RapidAPI-Host`, and n8n's
+simple `httpHeaderAuth` only holds one). Wrong: n8n's HTTP Request node **V1** — the only version this
+entire project uses, for consistency — doesn't support Custom Auth at all; checked its source directly and
+the `authentication` parameter only accepts `basicAuth`/`digestAuth`/`headerAuth`/`queryAuth`/`oAuth1`/
+`oAuth2`. Custom Auth is a V2+-only feature. Corrected by checking whether a static header (the non-secret
+`X-RapidAPI-Host`, always `jsearch.p.rapidapi.com`) and a credential-injected header (the secret
+`X-RapidAPI-Key`, via ordinary `httpHeaderAuth`) can coexist on one V1 request — confirmed from source
+that `headerParametersJson` and `httpHeaderAuth` both write into the same `requestOptions.headers` object
+additively, not exclusively. No Custom Auth needed at all; a second, ordinary Header Auth credential does
+the whole job.
+
+**Decision — real endpoint, found by direct comparison against the user's own account.** The commonly-
+documented `/search` path returned "Endpoint '/search' does not exist" — a RapidAPI **gateway**-level
+error (`x-rapidapi-proxy-response: true` in the response headers), meaning the request never reached
+JSearch's backend at all, independent of whether the key was valid. Spent several rounds ruling out the
+key (re-copied, still failed identically) and confirming the subscription was active (RapidAPI's own
+in-browser "Test Endpoint" succeeded) before asking the user to paste the *specific* endpoint's own code
+snippet from RapidAPI's sidebar — which uses `/search-v2`, not `/search`. The commonly-cited `/search` path
+is apparently deprecated or account-specific; `/search-v2` is the real, current one for this key. Real
+response shape confirmed live: `data.jobs[]` (not `data[]` directly), with a genuinely clean ISO
+`job_posted_at_datetime_utc` (no relative-date parsing needed, unlike SerpApi's `google_jobs`) and a real
+direct `job_apply_link` (not a redirect, unlike SerpApi's `share_link`).
+
+**Why the credential-type mistake matters.** This is the third time this session a wrong n8n credential
+type was handed out before being corrected against real behavior (SerpApi's original `serpApi` type, then
+its Query Auth "Name" field, now this). Standing rule going forward: **before instructing the user to
+create any n8n credential type, check that type's actual source/behavior against the specific node
+`typeVersion` actually in use** — a credential type that exists in principle may not be usable by the
+particular node version this project has standardized on.
+
+**Consequences.** Verified live, end to end: 7 real JSearch queries, real postings landed (`source =
+'jsearch'`), quota correctly tracked in the same shared `api_quota` mechanism (own separate 200/month cap,
+not shared with SerpApi's 250) — a combined WF-1b run this test produced 101 fetched / 55 new postings
+across both providers, 5 real Discord alerts confirmed by the owner (2 traceable to JSearch specifically).
+`sources.json`'s `jsearch` entry flipped to `enabled: true` and pushed, with a note recording the real
+endpoint path so it's never re-guessed as `/search` again.

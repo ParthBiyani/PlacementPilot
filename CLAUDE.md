@@ -256,8 +256,13 @@ Unfinished items are never deleted. New work is added here.
       postings, 2 alerts) plus a weekly Google-search-based X/Twitter branch sharing the same quota (22
       real postings, 8 alerts) — X itself is unreachable (`robots.txt` blanket block + no free API tier),
       but Googlebot-indexed tweet content via SerpApi's plain `google` engine works and never touches
-      x.com. JSearch scaffolded, `enabled: false` — no credential, no real response shape observed yet,
-      deliberately left unimplemented. See `DECISIONS.md` 2026-08-14.
+      x.com. **JSearch since built and verified live (2026-08-15)** once the user's RapidAPI credential was
+      ready: real endpoint is `/search-v2`, not the commonly-documented `/search` (a RapidAPI gateway-level
+      404, unrelated to the key) — found by comparing against the user's own account. Real Header Auth
+      credential (not Custom Auth, which n8n's V1 HTTP node this whole project uses doesn't support) plus a
+      static non-secret header, both merge into one request. 7 real queries, real postings landed
+      (`source='jsearch'`), own separate 200/month quota, `enabled: true` and pushed. See `DECISIONS.md`
+      2026-08-14 and 2026-08-15.
 - [x] WF-1c collect-pages — robots-aware fetch (Cutshort + Hirist, both individually verified against
       their own `robots.txt` after the owner pushed back on an earlier wrong rejection), slug-keyword
       prefilter for volume/cost control, LLM extraction via Anthropic. Not conditional-request-based yet
