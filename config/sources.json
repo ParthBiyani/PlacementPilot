@@ -30,7 +30,7 @@
     { "provider": "serpapi",   "enabled": true,  "monthly_limit": 250,  "_note": "google_jobs engine. Google for Jobs indexes Naukri, LinkedIn, Indeed, Instahyre." },
     { "provider": "adzuna",    "enabled": false, "monthly_limit": 1000, "_note": "Broad aggregate." },
     { "provider": "jooble",    "enabled": false, "monthly_limit": 0,    "_note": "Confirm limit at signup, then set it." },
-    { "provider": "careerjet", "enabled": false, "monthly_limit": 0,    "_note": "Confirm limit at signup, then set it." }
+    { "provider": "careerjet", "enabled": true,  "monthly_limit": 300,  "_note": "No documented vendor rate limit (affiliate API, no per-call fee) -- 300 is a self-imposed guardrail, not a confirmed cap. Real endpoint is v4/query, Basic Auth (key as username), needs Referer header + real user_ip matching a whitelisted IP." }
   ],
 
   "career_pages": [],
