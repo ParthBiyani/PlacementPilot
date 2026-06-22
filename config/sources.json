@@ -20,7 +20,9 @@
     { "provider": "ashby",      "token": "openai",     "company": "OpenAI" },
     { "provider": "ashby",      "token": "notion",     "company": "Notion" },
     { "provider": "ashby",      "token": "ramp",       "company": "Ramp" },
-    { "provider": "ashby",      "token": "deel",       "company": "Deel" }
+    { "provider": "ashby",      "token": "deel",       "company": "Deel" },
+    { "provider": "ashby",      "token": "bolna",       "company": "Bolna AI" },
+    { "provider": "greenhouse", "token": "razorpaysoftwareprivatelimited", "company": "Razorpay" }
   ],
 
   "aggregators": [

@@ -1096,3 +1096,46 @@ by real usage, not just vendor docs. The other three aggregators' limits stay fl
 those accounts exist. Given SerpApi is already near its cap, any decision to activate WF-1b for real,
 continuous daily operation should account for the fact that there's little room to add more queries later
 without either dropping some existing ones or accepting occasional skipped days near month-end.
+
+---
+
+## 2026-08-15 — Adzuna declined by the user; 2 of 3 WF-1d discoveries promoted; credential mechanics for JSearch/Careerjet
+
+**Context.** Follow-up on the standing "blocked on the user" list. The user declined to sign up for Adzuna
+("seems very fishy") and asked how to actually enter the RapidAPI/JSearch and Careerjet credentials once
+those accounts exist, plus asked what "promoting" WF-1d's discoveries and "approving a starter company
+list" actually mean.
+
+**Decision — Adzuna.** Not pursued. The user's call, not a technical finding — recorded here per the
+project's standing rule that decisions to reject something go in this file too. SerpApi already covers a
+meaningful chunk of the same aggregator ground (`google_jobs` indexes Naukri/LinkedIn/Indeed/Instahyre),
+so this isn't a coverage gap worth pushing back on.
+
+**Decision — starter company list.** Treated as already effectively satisfied rather than a still-open
+item: Phase 0's real, live-probed 15 sources (PhonePe, Groww, Postman, Stripe, Databricks, etc.) already
+serve the same function a formal "propose 30, get approval" step would have — they were seeded because
+they demonstrably worked, not because they were pre-approved from a list. No further action unless the
+user wants a larger, more deliberate list proposed separately.
+
+**Decision — WF-1d promotion, 2 of 3.** Promoted Bolna AI (Ashby) and Razorpay (Greenhouse) from
+`discovered_sources` into `sources.json`'s real `ats` array — both providers WF-1's `By Provider` switch
+already handles. **Weekday (Workable) was not promoted** — WF-1 has no Workable case in that switch, and
+its `fallbackOutput: -1` isn't wired to anything, so an unmatched provider silently vanishes rather than
+erroring. Adding Weekday as-is would have registered a real `sources` row that never actually gets fetched,
+which the zero-result alarm built in Phase 3 would eventually and *correctly* flag as consecutive zeros —
+a real, misleading alarm for a source that isn't actually broken, just unsupported. Left for the user to
+decide whether extending WF-1 with a fourth (Workable) branch is worth it for one company.
+
+**Decision — JSearch/Careerjet credential mechanics, verified against this n8n instance's own source
+rather than guessed** (matching the SerpApi credential lesson from earlier this session — get burned once,
+verify from then on). JSearch needs two headers (`X-RapidAPI-Key`, `X-RapidAPI-Host`); n8n's `HttpHeaderAuth`
+credential type only has one Name/Value pair and its own UI explicitly says to use "Custom Auth" for
+multi-header cases. `HttpCustomAuth` takes a single JSON field shaping `{headers, body, qs}` together —
+confirmed via its own credential class source, not assumed. Careerjet's current (v4) API uses HTTP Basic
+Auth (API key as username, empty password) per its own docs, which maps directly to n8n's standard
+`httpBasicAuth` credential type — no custom JSON needed there.
+
+**Consequences.** `sources.json` now has 17 real ATS entries (was 15). JSearch and Careerjet stay
+unconfigured until the user creates the underlying accounts and enters credentials using the steps above;
+WF-1b's JSearch branch remains deliberately unimplemented until then (see the earlier WF-1b entry — still
+true, still the right call).
