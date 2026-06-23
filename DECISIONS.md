@@ -1184,3 +1184,49 @@ not shared with SerpApi's 250) — a combined WF-1b run this test produced 101 f
 across both providers, 5 real Discord alerts confirmed by the owner (2 traceable to JSearch specifically).
 `sources.json`'s `jsearch` entry flipped to `enabled: true` and pushed, with a note recording the real
 endpoint path so it's never re-guessed as `/search` again.
+
+---
+
+## 2026-08-15 — Careerjet built and verified live: four layered validation checks, not one
+
+**Context.** Careerjet had never been scaffolded in WF-1b at all (unlike JSearch, which at least had an
+inert placeholder branch). Built from scratch once the user's Basic Auth credential existed.
+
+**Decision.** Careerjet's Partner API turned out to have **four independent validation layers**, each
+surfacing only after the previous one passed — discovered one real error at a time, not assumed upfront:
+1. **Key validity** ("Invalid API key provided") — the user's first-entered key was simply wrong; a fresh
+   copy from their Careerjet dashboard fixed it.
+2. **IP whitelisting** ("Unauthorized access from IP {ip}") — the error message named the exact rejected
+   IP, which the user then whitelisted in their Careerjet partner dashboard. Worth remembering: if this
+   machine's public IP is dynamic (not confirmed either way), this will need re-whitelisting whenever it
+   changes.
+3. **`user_ip` parameter validation** ("Invalid user_ip") — the placeholder value used for the first three
+   attempts (`1.1.1.1`, a real but non-representative public IP) was rejected; switched to the same real
+   IP that had just been whitelisted, which the API accepted.
+4. **Referer header** ("Undeclared referrer. Please add a Referer header.") — required even for a
+   server-to-server call, tied to whatever site the user registered with their partner account (in this
+   case a placeholder domain made up for the signup, `www.parth.com` — sent as the literal `Referer` value
+   and accepted).
+
+**Real response shape, confirmed live only after all four passed:** `{hits, jobs[], message, pages,
+response_time, type}`. Each job has `company`, `title`, `locations`, `description` (HTML `<b>` highlight
+tags present, stripped before storage), `date` (an RFC-2822-style string, e.g. `"Wed, 05 Aug 2026
+22:55:49 GMT"` — parses cleanly via plain `new Date(...)`, no custom parsing needed), `url` (a
+`jobviewtrack.com` tracking redirect, not a direct apply link), and `salary` (empty string, not null, when
+absent). **No `employment_type` field at all** — left `null` in our schema; WF-2's own scoring already
+reads employment signals from the description text regardless.
+
+**Quota.** No documented vendor rate limit exists for this API tier — it's a click-through affiliate
+model, not a metered one. Set a self-imposed `monthly_limit: 300` in `sources.json`, explicitly labeled as
+a guardrail we chose, not a confirmed cap, using the same `api_quota` mechanism as every other provider.
+
+**Why.** Each of the four failures was a genuinely different error message from Careerjet's own server,
+diagnosed one at a time rather than guessed — this is a real, unusually defense-in-depth partner API, not
+a broken integration on our end. Worth remembering as a category: some partner/affiliate APIs (built for
+embedding in a real website's search box) carry validation assumptions — a real end-user IP, a real
+referring page — that a clean server-to-server automation has to deliberately fake with plausible values.
+
+**Consequences.** Verified live, end to end, with all three aggregators running together in one real
+WF-1b execution: 134 fetched / 35 new postings, 2 real Discord alerts confirmed. `sources.json`'s
+`careerjet` entry flipped to `enabled: true` and pushed. `By Provider`'s switch now has three real routes;
+`Merge Provider Results` widened from 2 to 3 inputs to match.

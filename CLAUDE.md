@@ -93,16 +93,18 @@ activating the built-but-dormant Phase 4 workflows — all the user's call.
 | Python / uv | 3.11.9 / 0.11.25 present — unused by design, all-n8n. |
 | Postgres | **Running.** `placementpilot-postgres-1`, healthy, schema applied — 14 tables confirmed. Host port **5433**, not 5432 (a native Postgres Windows service already held 5432 — see `docker-compose.yml` comment). |
 | n8n | **Running.** `placementpilot-n8n-1`, v2.34.6, healthy at <http://localhost:5678>. Owner account created. `workflows/` bind-mounted into the container at `/home/node/workflows` so the CLI (`import:workflow`/`execute`/`publish:workflow`) can build and test directly against it — no API key needed. |
-| Accounts | **In progress** — Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth 403 resolved. **Adzuna declined by the user** (2026-08-15 — didn't trust the signup flow; not being pursued). Jooble's real signup page located (`jooble.org/api/about`) but not yet created — user's call whether it's worth the friction given SerpApi already covers this ground. Real free-tier limits not yet recorded in `config/sources.json` for the not-yet-created providers. n8n credential store has Discord Bot, SerpApi (**wrong type, see below**), a new **Query Auth** credential for SerpApi's real HTTP calls, Gmail, **Anthropic**, plus `pp-local-postgres` (our own Docker DB, not a third-party secret). RapidAPI/JSearch and Careerjet credentials still need to be entered (steps given to the user 2026-08-15 — Custom Auth for JSearch's two headers, Basic Auth for Careerjet's v4 API). |
+| Accounts | **All active providers fully wired.** Discord, RapidAPI/JSearch, SerpApi, Careerjet, Google Cloud, **Anthropic** all created; Gmail OAuth resolved. **Adzuna declined by the user** (2026-08-15 — didn't trust the signup flow). Jooble's real signup page located (`jooble.org/api/about`) but account creation is optional/the user's call — its auth is structurally different (key in URL path, POST-only) so it needs real workflow-building whenever pursued, not just a credential. n8n credential store: Discord Bot, SerpApi (**unused, wrong type — see below**), **Query Auth** (SerpApi's real HTTP calls), **Header Auth** (JSearch's `X-RapidAPI-Key`), **Basic Auth** (Careerjet), Gmail, **Anthropic**, plus `pp-local-postgres`. Both JSearch and Careerjet needed real debugging past their documented behavior before working — see `DECISIONS.md` 2026-08-15 for both (wrong endpoint path for JSearch; four layered validation checks for Careerjet — key, IP whitelist, `user_ip` param, `Referer` header). |
 | Scaffolding | `db/schema.sql` (14 tables; `evaluations` gained `deadline`/`eligibility`/`ctc_or_stipend` columns), `docker-compose.yml`, `.env.example`, `config/*`, `prompts/v1.md`, `SETUP.md` all written. |
 | Config files | Sources seeded with **15 board tokens probed live on 2026-08-13**, plus **2 more promoted from WF-1d's discoveries** (Bolna AI/Ashby, Razorpay/Greenhouse — both providers WF-1 already knows how to fetch). A third discovery, **Weekday/Workable, stays unpromoted** — WF-1's fetch logic has no Workable case yet, so adding it as-is would register a source that silently never fetches and eventually false-alarms as zero-result; needs WF-1 extended first. `preferences.json` has the **real profile** — derived from `Resumes/` (3 role-targeted resumes: SDE, AI/ML, Data), gitignored, never committed. `PP_CONFIG_BASE_URL` is an **`$env` var** (`N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"` in `docker-compose.yml`) — **not** `$vars`; n8n Variables turned out to be license-gated on this instance and silently resolves to `undefined` rather than erroring. See `DECISIONS.md` 2026-08-14 "Correction: n8n Variables are license-gated." |
 | Workflows | **Phase 1 + Phase 2 complete; Phase 3 core complete; Phase 4 in progress.** Ten workflows now built and verified live: WF-L0, WF-L1, WF-0, WF-1, WF-2, WF-3, WF-5, **WF-1d discover**, **WF-1c collect-pages**, **WF-1b collect-aggregators**. Phase 3 fixed a real bug that had every `source: database` Execute Workflow call failing outside CLI-style testing and built WF-1's zero-result alarm plus WF-L0's fallback-fetch alarm. **Phase 4 (this session):** researched six candidate sources total (Internshala, Wellfound, Cutshort, Hirist, then X/Twitter) — **Cutshort, Hirist, and Google-indexed X/Twitter content are genuinely viable** (verified via each site's own `robots.txt`, not assumption); Internshala, Wellfound, and direct X access remain correctly blocked, each for a distinct, verified reason (see `DECISIONS.md`). Fixed the SerpAPI credential twice (wrong n8n credential type entirely, then a wrong "Name" field value that silently broke auth). Built **WF-1d discover** (career-page-link extraction, 3/49 real confirmed ATS boards — Bolna AI, Razorpay, Weekday) and along the way found and fixed a **real, latent bug in WF-L0 itself** that was non-deterministically corrupting `executeWorkflow`'s output for every caller (WF-1, WF-2, not just WF-1d). Built **WF-1c collect-pages** (Cutshort + Hirist, slug-keyword prefilter, 30 real candidates → 29 valid extractions → 6 real Discord alerts). Built **WF-1b collect-aggregators** (SerpApi `google_jobs`, 30 real postings, 2 real alerts) then extended it with a Google-search-based X/Twitter source sharing the same quota bucket, gated weekly (22 real postings, 8 real alerts). JSearch stays scaffolded but unbuilt — no credential, real response shape never observed. Full details in `DECISIONS.md` and `FLOW.md` "Changed this session" 2026-08-14. WF-1, WF-1d, WF-1c, and WF-1b are all `active: false` — left for the user to switch on. |
 
-**Blocked on the user:** Jooble signup (optional, real page found — `jooble.org/api/about`) · entering
-RapidAPI/JSearch + Careerjet credentials into the n8n store (steps given 2026-08-15) · **decide whether to
-activate WF-1, WF-1d, WF-1c, and/or WF-1b** (real hourly ATS traffic / real weekly career-page discovery
-traffic / real daily Cutshort+Hirist traffic / real daily SerpApi traffic respectively) · decide whether
-to extend WF-1 with Workable support so Weekday can be promoted too.
+**Blocked on the user:** Jooble signup (optional, real page found — `jooble.org/api/about`; note its auth
+is structurally different — key embedded in the URL path, POST-only — so it needs real workflow-building,
+not just a credential entry, whenever pursued) · **decide whether to activate WF-1, WF-1d, WF-1c, and/or
+WF-1b** (real hourly ATS traffic / real weekly career-page discovery traffic / real daily Cutshort+Hirist
+traffic / real daily SerpApi+JSearch+Careerjet traffic respectively) · decide whether to extend WF-1 with
+Workable support so Weekday can be promoted too · if this machine's public IP is dynamic, Careerjet's
+whitelisted IP (`49.156.93.171` as of 2026-08-15) may need updating in their partner dashboard later.
 
 ---
 
@@ -261,8 +263,15 @@ Unfinished items are never deleted. New work is added here.
       404, unrelated to the key) — found by comparing against the user's own account. Real Header Auth
       credential (not Custom Auth, which n8n's V1 HTTP node this whole project uses doesn't support) plus a
       static non-secret header, both merge into one request. 7 real queries, real postings landed
-      (`source='jsearch'`), own separate 200/month quota, `enabled: true` and pushed. See `DECISIONS.md`
-      2026-08-14 and 2026-08-15.
+      (`source='jsearch'`), own separate 200/month quota, `enabled: true` and pushed. **Careerjet built and
+      verified live the same day** — never scaffolded before, built from scratch. Its Partner API has four
+      independent, layered validation checks (key validity, IP whitelisting, a `user_ip` parameter that
+      must match a real address, a `Referer` header tied to the registered partner site) each surfaced one
+      at a time as real errors, not documented upfront. No vendor rate limit exists for this tier; a
+      self-imposed 300/month guardrail was set instead of assuming unlimited. `By Provider`'s switch now
+      routes 3 real providers; `Merge Provider Results` widened to 3 inputs. All three aggregators
+      verified running together in one real execution: 134 fetched, 35 new, 2 real Discord alerts. See
+      `DECISIONS.md` 2026-08-14 and 2026-08-15.
 - [x] WF-1c collect-pages — robots-aware fetch (Cutshort + Hirist, both individually verified against
       their own `robots.txt` after the owner pushed back on an earlier wrong rejection), slug-keyword
       prefilter for volume/cost control, LLM extraction via Anthropic. Not conditional-request-based yet
@@ -697,3 +706,33 @@ WhatsApp as a second channel · more aggregators · public write-up
   inflated (everything counted as "new"). Greenhouse/Lever/Ashby have no quota concept. JSearch/Adzuna/
   Jooble/Careerjet remain unverified — no credentials exist yet. Full numbers in `DECISIONS.md`.
 - **Phase 4 is now fully complete.**
+
+### 2026-08-15 — Adzuna dropped, WF-1d partly promoted, JSearch and Careerjet built and verified live
+
+- User declined Adzuna ("seems very fishy") and couldn't find Jooble's signup — located the real page
+  (`jooble.org/api/about`) for them; noted its auth is structurally different (key in URL path, POST-only)
+  so it'd need real workflow-building whenever pursued, not just a credential entry.
+- Explained what "promoting" WF-1d's discoveries and "approving a starter company list" actually meant
+  (neither had been explained clearly before). Promoted 2 of 3 discoveries (Bolna AI, Razorpay) into
+  `sources.json` — both providers WF-1 already fetches. Held back Weekday (Workable) since WF-1's fetch
+  switch has no Workable case; adding it as-is would register a source that silently never fetches and
+  eventually false-alarms as zero-result. Deleted the stray `client_secret_*.json` from the repo root
+  (confirmed the real Gmail credential already lived safely in n8n first).
+- Gave the user exact n8n steps for JSearch (Custom Auth — later found wrong, see below) and Careerjet
+  (Basic Auth, correct) credentials. Restarted Docker Desktop after the user's laptop sleep took it down.
+- **Built and verified JSearch live.** Custom Auth turned out to not be supported by n8n's V1 HTTP node
+  (this whole project's standard) — corrected to an ordinary Header Auth credential plus a static header,
+  both merging into the same request. The documented `/search` endpoint 404s at RapidAPI's own gateway
+  level for this account; the real one is `/search-v2`, found by comparing against the account's own
+  endpoint-specific code snippet after ruling out the key and the subscription. 7 real queries, real
+  postings, `enabled: true` and pushed.
+- **Built and verified Careerjet live** — never scaffolded before, built from scratch. Its Partner API
+  needed four real, layered fixes in sequence: a corrected key, an IP whitelisted in the user's Careerjet
+  dashboard (the error message named the exact rejected IP), a `user_ip` parameter matching that same real
+  IP (a placeholder value was rejected), and a `Referer` header matching the site registered at signup (a
+  domain the user made up on the spot, which worked fine). No vendor quota is documented for this tier;
+  set a self-imposed, clearly-labeled 300/month guardrail instead of assuming unlimited.
+- **Verified all three aggregators together in one real WF-1b execution**: 134 fetched, 35 new postings,
+  2 real Discord alerts confirmed. `By Provider`'s switch now routes SerpApi/JSearch/Careerjet for real.
+- Full technical detail for both integrations, including every real error message hit along the way, in
+  `DECISIONS.md` 2026-08-15.

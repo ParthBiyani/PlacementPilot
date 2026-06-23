@@ -134,7 +134,8 @@
         "rules": {
           "rules": [
             { "operation": "equal", "value2": "serpapi", "output": 0 },
-            { "operation": "equal", "value2": "jsearch", "output": 1 }
+            { "operation": "equal", "value2": "jsearch", "output": 1 },
+            { "operation": "equal", "value2": "careerjet", "output": 2 }
           ]
         },
         "fallbackOutput": -1
@@ -326,7 +327,50 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
       "position": [3060, 400],
-      "parameters": { "mode": "append", "numberInputs": 2 }
+      "parameters": { "mode": "append", "numberInputs": 3 }
+    },
+    {
+      "id": "a1b1c1d1-0001-4000-8000-000000000020",
+      "name": "Build Careerjet Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 760],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Careerjet's free/publisher tier has no documented rate limit (it's an\n// affiliate API -- they profit from click-throughs, not per-call fees), so\n// monthly_limit here is a self-imposed guardrail, not a confirmed vendor cap.\nconst quota = $input.first().json;\nconst queries = ($('Combine Configs').all()[0].json.queries || []).slice(0, quota.remaining);\nreturn queries.map(q => ({ json: { provider: 'careerjet', query: q } }));"
+      }
+    },
+    {
+      "id": "a1b1c1d1-0001-4000-8000-000000000021",
+      "name": "Call Careerjet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [2620, 760],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "=https://search.api.careerjet.net/v4/query?keywords={{ encodeURIComponent($json.query) }}&locale_code=en_IN&user_ip=49.156.93.171&user_agent=Mozilla%2F5.0%20(PlacementPilotBot)&page_size=20",
+        "authentication": "basicAuth",
+        "responseFormat": "string",
+        "dataPropertyName": "data",
+        "jsonParameters": true,
+        "headerParametersJson": "{\"Referer\": \"https://www.parth.com/\"}",
+        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 20000 }
+      },
+      "credentials": { "httpBasicAuth": { "id": "KcZqBgOuK89XknMv", "name": "Unnamed credential" } }
+    },
+    {
+      "id": "a1b1c1d1-0001-4000-8000-000000000022",
+      "name": "Parse Careerjet Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2840, 760],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Real shape confirmed live 2026-08-15. No employment_type field at all --\n// left null, WF-2's own scoring reads it from the description text instead.\n// description carries <b> highlight tags from Careerjet's own search\n// highlighting; stripped here since they're not meaningful outside their UI.\nconst out = [];\nfor (const item of $input.all()) {\n  const resp = item.json;\n  if (resp.statusCode !== 200) continue;\n  let parsed;\n  try {\n    const raw = typeof resp.body === 'string' ? resp.body : resp.data;\n    parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) {\n    continue;\n  }\n  const jobs = parsed.jobs || [];\n  for (const j of jobs) {\n    const postedDate = j.date ? new Date(j.date) : null;\n    out.push({\n      json: {\n        company: j.company,\n        role: j.title,\n        location: j.locations || null,\n        employment_type: null,\n        apply_url: j.url,\n        source: 'careerjet',\n        source_id: null,\n        description: (j.description || '').replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim(),\n        posted_date: (postedDate && !isNaN(postedDate.getTime())) ? postedDate.toISOString() : null\n      }\n    });\n  }\n}\nreturn out;"
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000013",
@@ -399,7 +443,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "let serpapiCalls = 0, jsearchCalls = 0;\ntry { serpapiCalls = $('Build SerpApi Queries').all().length; } catch (e) {}\ntry { jsearchCalls = $('Build JSearch Queries').all().length; } catch (e) {}\n\nconst out = [];\nconst period = new Date().toISOString().slice(0, 7);\nif (serpapiCalls > 0) out.push({ json: { provider: 'serpapi', period_month: period, calls_made: serpapiCalls, monthly_limit: 250 } });\nif (jsearchCalls > 0) out.push({ json: { provider: 'jsearch', period_month: period, calls_made: jsearchCalls, monthly_limit: 200 } });\nreturn out;"
+        "jsCode": "let serpapiCalls = 0, jsearchCalls = 0, careerjetCalls = 0;\ntry { serpapiCalls = $('Build SerpApi Queries').all().length; } catch (e) {}\ntry { jsearchCalls = $('Build JSearch Queries').all().length; } catch (e) {}\ntry { careerjetCalls = $('Build Careerjet Queries').all().length; } catch (e) {}\n\nconst out = [];\nconst period = new Date().toISOString().slice(0, 7);\nif (serpapiCalls > 0) out.push({ json: { provider: 'serpapi', period_month: period, calls_made: serpapiCalls, monthly_limit: 250 } });\nif (jsearchCalls > 0) out.push({ json: { provider: 'jsearch', period_month: period, calls_made: jsearchCalls, monthly_limit: 200 } });\nif (careerjetCalls > 0) out.push({ json: { provider: 'careerjet', period_month: period, calls_made: careerjetCalls, monthly_limit: 300 } });\nreturn out;"
       }
     },
     {
@@ -442,7 +486,8 @@
     "By Provider": {
       "main": [
         [{ "node": "Build SerpApi Queries", "type": "main", "index": 0 }],
-        [{ "node": "Build JSearch Queries", "type": "main", "index": 0 }]
+        [{ "node": "Build JSearch Queries", "type": "main", "index": 0 }],
+        [{ "node": "Build Careerjet Queries", "type": "main", "index": 0 }]
       ]
     },
     "Build SerpApi Queries": { "main": [[{ "node": "Call SerpApi", "type": "main", "index": 0 }]] },
@@ -462,6 +507,9 @@
     "Build JSearch Queries": { "main": [[{ "node": "Call JSearch", "type": "main", "index": 0 }]] },
     "Call JSearch": { "main": [[{ "node": "Parse JSearch Results", "type": "main", "index": 0 }]] },
     "Parse JSearch Results": { "main": [[{ "node": "Merge Provider Results", "type": "main", "index": 1 }]] },
+    "Build Careerjet Queries": { "main": [[{ "node": "Call Careerjet", "type": "main", "index": 0 }]] },
+    "Call Careerjet": { "main": [[{ "node": "Parse Careerjet Results", "type": "main", "index": 0 }]] },
+    "Parse Careerjet Results": { "main": [[{ "node": "Merge Provider Results", "type": "main", "index": 2 }]] },
     "Merge Provider Results": {
       "main": [[
         { "node": "Call WF-L1", "type": "main", "index": 0 },
