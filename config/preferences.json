@@ -37,8 +37,13 @@
       "chennai"
     ],
     "remote_ok": true,
-    "employment_types": ["internship", "full_time", "apprenticeship"],
-    "max_experience_years": 1
+    "employment_types": ["full_time", "internship"],
+    "max_experience_years": 0,
+    "graduation_batch": 2027,
+    "min_ctc_lpa": 20,
+    "min_in_hand_lpa": 15,
+    "min_stipend_inr_per_month": 75000,
+    "foreign_currency_ok": true
   },
 
   "exclude": {
@@ -53,7 +58,8 @@
       "telecaller",
       "field executive"
     ],
-    "companies": []
+    "companies": [],
+    "pure_internship_no_conversion": true
   },
 
   "notify": {
@@ -72,7 +78,13 @@
     "generative ai intern india",
     "data analyst intern india",
     "data engineer intern bangalore",
-    "new grad software engineer india 2027"
+    "new grad software engineer india 2027",
+    "software engineer india high ctc",
+    "backend engineer full time india",
+    "machine learning engineer india",
+    "generative ai engineer india",
+    "data engineer india",
+    "software engineer remote india"
   ],
 
   "x_search_queries": [
