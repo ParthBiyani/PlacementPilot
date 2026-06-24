@@ -1,0 +1,385 @@
+{
+  "id": "f4a1b2c3d4e5f678",
+  "name": "WF-4 gmail",
+  "nodes": [
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000001",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 400],
+      "parameters": {
+        "event": "messageReceived",
+        "simple": false,
+        "filters": {
+          "q": "-category:promotions -category:social -category:forums"
+        },
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": { "id": "8I5mJwOTBV0NzKih", "name": "Gmail account" }
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000001a",
+      "name": "Map Gmail Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [310, 400],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn {\n  json: {\n    message_id: j.id,\n    subject: j.subject || '',\n    from_text: (j.from && j.from.text) || '',\n    body_text: j.text || j.html || ''\n  }\n};"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000002",
+      "name": "Check Already Processed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [420, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT $1::text AS message_id, $2::text AS subject, $3::text AS from_text, $4::text AS body_text, (m.message_id IS NOT NULL) AS already_processed FROM (SELECT 1) d LEFT JOIN gmail_messages m ON m.message_id = $1",
+        "additionalFields": {
+          "queryParams": "message_id,subject,from_text,body_text"
+        }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000003",
+      "name": "Not Yet Processed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 400],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.already_processed }}", "operation": "equal", "value2": false }
+          ]
+        }
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000004",
+      "name": "Build Classify Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 400],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst SYSTEM_MESSAGE = `You classify emails for a job-hunting tracker. Read the email and respond with STRICT JSON ONLY, matching exactly this shape, no other text, no markdown fences:\n{\n  \"classification\": \"oa\" | \"interview\" | \"rejection\" | \"offer\" | \"referral\" | \"other\",\n  \"company\": \"<string, the hiring company this email is about, or null>\",\n  \"role\": \"<string, the job title/role mentioned, or null>\",\n  \"deadline\": \"<string, exactly as stated (e.g. an interview date/time, a response-by date), or null if none stated>\"\n}\n\nClassification guide:\n- oa: online assessment / coding test invitation\n- interview: interview invitation or scheduling\n- rejection: application rejected / role filled / not moving forward\n- offer: job offer extended\n- referral: someone offering or requesting a referral\n- other: anything not clearly one of the above (newsletters, unrelated personal email, spam, etc.) -- use this whenever genuinely unsure rather than forcing a guess\n\ncompany, role, and deadline are extracted verbatim from the email text, never inferred or guessed.`;\n\nconst userMessage = `SUBJECT: ${j.subject || ''}\nFROM: ${j.from_text || ''}\n\nBODY:\n${(j.body_text || '').slice(0, 6000)}`;\n\nreturn { json: { ...j, system_message: SYSTEM_MESSAGE, user_message: userMessage } };"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000005",
+      "name": "Classify Email",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [1080, 400],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "messages": {
+          "values": [{ "role": "user", "content": "={{ $json.user_message }}" }]
+        },
+        "simplify": false,
+        "options": {
+          "system": "={{ $json.system_message }}",
+          "maxTokens": 400,
+          "temperature": 0
+        }
+      },
+      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000006",
+      "name": "Validate Attempt 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 400],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const VALID = ['oa', 'interview', 'rejection', 'offer', 'referral', 'other'];\n\nfunction tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!VALID.includes(parsed.classification)) errors.push('classification must be one of ' + VALID.join('/'));\n  if (parsed.company !== null && parsed.company !== undefined && typeof parsed.company !== 'string') errors.push('company must be a string or null');\n  if (parsed.role !== null && parsed.role !== undefined && typeof parsed.role !== 'string') errors.push('role must be a string or null');\n  if (parsed.deadline !== null && parsed.deadline !== undefined && typeof parsed.deadline !== 'string') errors.push('deadline must be a string or null');\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Check Already Processed').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    valid: result.ok,\n    classification: result.ok ? result.parsed.classification : null,\n    company: result.ok ? (result.parsed.company || null) : null,\n    role: result.ok ? (result.parsed.role || null) : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    retry_user_message: result.ok ? null : ($('Build Classify Prompt').all()[$itemIndex].json.user_message + '\\n\\nYour previous response was invalid and could not be used: ' + result.error + '\\nRespond again with STRICT JSON ONLY, matching exactly the required shape, no other text, no markdown fences.'),\n    system_message: $('Build Classify Prompt').all()[$itemIndex].json.system_message\n  }\n};"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000007",
+      "name": "Attempt 1 Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1520, 400],
+      "parameters": {
+        "conditions": {
+          "boolean": [{ "value1": "={{ $json.valid }}", "operation": "equal", "value2": true }]
+        }
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000008",
+      "name": "Classify Email Retry",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [1740, 560],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "messages": {
+          "values": [{ "role": "user", "content": "={{ $json.retry_user_message }}" }]
+        },
+        "simplify": false,
+        "options": {
+          "system": "={{ $json.system_message }}",
+          "maxTokens": 400,
+          "temperature": 0
+        }
+      },
+      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000009",
+      "name": "Validate Attempt 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 560],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const VALID = ['oa', 'interview', 'rejection', 'offer', 'referral', 'other'];\n\nfunction tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!VALID.includes(parsed.classification)) errors.push('classification must be one of ' + VALID.join('/'));\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Validate Attempt 1').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    classification: result.ok ? result.parsed.classification : 'other',\n    company: result.ok ? (result.parsed.company || null) : null,\n    role: result.ok ? (result.parsed.role || null) : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    invalid: !result.ok\n  }\n};"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000000a",
+      "name": "Finalize From Attempt 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 260],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn { json: { message_id: j.message_id, subject: j.subject, from_text: j.from_text, classification: j.classification, company: j.company, role: j.role, deadline: j.deadline, invalid: false } };"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000000b",
+      "name": "Merge Classification",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [2180, 400],
+      "parameters": { "mode": "append", "numberInputs": 2 }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000000c",
+      "name": "Is Actionable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2400, 400],
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ $json.classification }}", "operation": "notEqual", "value2": "other" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000000d",
+      "name": "Normalize Company For Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2620, 280],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const LEGAL_SUFFIXES = ['private limited', 'pvt ltd', 'pvt', 'pte ltd', 'llp', 'llc', 'incorporated', 'inc', 'technologies', 'technology', 'labs', 'corporation', 'corp', 'limited', 'ltd', 'gmbh'];\n\nfunction normCompany(raw) {\n  let s = (raw || '').toLowerCase().trim();\n  s = s.replace(/[.,]/g, '');\n  for (const suffix of LEGAL_SUFFIXES) {\n    const re = new RegExp('\\\\b' + suffix + '\\\\b', 'g');\n    s = s.replace(re, '');\n  }\n  return s.replace(/\\s+/g, ' ').trim();\n}\n\nreturn { json: { ...$json, norm_company_query: normCompany($json.company) } };"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000000e",
+      "name": "Fuzzy Match Posting",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2840, 280],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS matched_posting_id, company AS matched_company, role AS matched_role, similarity(norm_company, $1) AS match_similarity FROM postings WHERE $1 != '' AND similarity(norm_company, $1) > 0.35 ORDER BY match_similarity DESC LIMIT 1",
+        "additionalFields": { "queryParams": "norm_company_query" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-00000000000f",
+      "name": "Combine Match Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3060, 280],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const ctx = $('Normalize Company For Match').all()[$itemIndex].json;\nconst match = $json;\nreturn {\n  json: {\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    classification: ctx.classification,\n    company: ctx.company,\n    role: ctx.role,\n    deadline: ctx.deadline,\n    invalid: ctx.invalid || false,\n    matched_posting_id: match.matched_posting_id || null,\n    matched_company: match.matched_company || null,\n    match_similarity: match.match_similarity || null\n  }\n};"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000010",
+      "name": "Build Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3280, 280],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nconst LABELS = { oa: '\\uD83D\\uDCDD Online Assessment', interview: '\\uD83C\\uDFA4 Interview', rejection: '\\u274C Rejection', offer: '\\uD83C\\uDF89 Offer', referral: '\\uD83E\\uDD1D Referral' };\nconst title = `${LABELS[j.classification] || j.classification} \\u2014 ${j.company || 'Unknown company'}`;\n\nconst lines = [\n  j.role ? `**Role:** ${j.role}` : null,\n  j.deadline ? `**Date/Deadline:** ${j.deadline}` : null,\n  j.matched_posting_id\n    ? `**Matched posting:** ${j.matched_company} (similarity ${Math.round((j.match_similarity || 0) * 100)}%)`\n    : '**No matching tracked posting found** \\u2014 update manually if this is relevant.',\n  `**Subject:** ${j.subject}`,\n  `**From:** ${j.from_text}`\n].filter(Boolean);\n\nconst color = { oa: 15105570, interview: 3066993, rejection: 15548997, offer: 3066993, referral: 3447003 }[j.classification] || 9807270;\n\nreturn { json: { ...j, embed_title: title, embed_description: lines.join('\\n'), embed_color: color } };"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000011",
+      "name": "Send Discord Alert",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [3500, 280],
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "channel",
+        "guildId": { "__rl": true, "mode": "id", "value": "1537760475398545418" },
+        "channelId": { "__rl": true, "mode": "id", "value": "1537760929264041984" },
+        "content": "",
+        "embeds": {
+          "values": [
+            {
+              "inputMethod": "fields",
+              "title": "={{ $json.embed_title }}",
+              "description": "={{ $json.embed_description }}",
+              "color": "={{ $json.embed_color }}"
+            }
+          ]
+        }
+      },
+      "credentials": { "discordBotApi": { "id": "zuoho254CZQQSFRx", "name": "Discord Bot account" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000012",
+      "name": "Update Application",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [3720, 280],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO applications (posting_id, status, updated_at, notes) SELECT $1, $2, now(), $3 WHERE $1 IS NOT NULL ON CONFLICT (posting_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now(), notes = EXCLUDED.notes RETURNING posting_id",
+        "additionalFields": { "queryParams": "matched_posting_id,classification,subject" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000013",
+      "name": "Shape Skipped (Other)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2620, 560],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn { json: { message_id: j.message_id, classification: j.classification, company: j.company, role: j.role, deadline: j.deadline, invalid: j.invalid || false, matched_posting_id: null, match_similarity: null } };"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000014",
+      "name": "Merge Before Record",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [3940, 400],
+      "parameters": { "mode": "append", "numberInputs": 2 }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000015",
+      "name": "Record Gmail Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [4160, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO gmail_messages (message_id, classification, company, role, deadline, matched_posting_id, match_similarity, invalid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (message_id) DO NOTHING RETURNING message_id",
+        "additionalFields": { "queryParams": "message_id,classification,company,role,deadline,matched_posting_id,match_similarity,invalid" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000016",
+      "name": "Tally",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4380, 400],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "let fetched = 0, notified = 0;\ntry { fetched = $('Check Already Processed').all().length; } catch (e) {}\ntry { notified = $('Send Discord Alert').all().length; } catch (e) {}\nconst processed = $input.all().length;\nreturn [{ json: { fetched, processed, notified } }];"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000017",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [4600, 400],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, notified) VALUES ('WF-4', now(), now(), $1, $2) RETURNING id",
+        "additionalFields": { "queryParams": "fetched,notified" }
+      },
+      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": { "main": [[{ "node": "Map Gmail Fields", "type": "main", "index": 0 }]] },
+    "Map Gmail Fields": { "main": [[{ "node": "Check Already Processed", "type": "main", "index": 0 }]] },
+    "Check Already Processed": { "main": [[{ "node": "Not Yet Processed?", "type": "main", "index": 0 }]] },
+    "Not Yet Processed?": { "main": [[{ "node": "Build Classify Prompt", "type": "main", "index": 0 }], []] },
+    "Build Classify Prompt": { "main": [[{ "node": "Classify Email", "type": "main", "index": 0 }]] },
+    "Classify Email": { "main": [[{ "node": "Validate Attempt 1", "type": "main", "index": 0 }]] },
+    "Validate Attempt 1": { "main": [[{ "node": "Attempt 1 Valid?", "type": "main", "index": 0 }]] },
+    "Attempt 1 Valid?": {
+      "main": [
+        [{ "node": "Finalize From Attempt 1", "type": "main", "index": 0 }],
+        [{ "node": "Classify Email Retry", "type": "main", "index": 0 }]
+      ]
+    },
+    "Classify Email Retry": { "main": [[{ "node": "Validate Attempt 2", "type": "main", "index": 0 }]] },
+    "Finalize From Attempt 1": { "main": [[{ "node": "Merge Classification", "type": "main", "index": 0 }]] },
+    "Validate Attempt 2": { "main": [[{ "node": "Merge Classification", "type": "main", "index": 1 }]] },
+    "Merge Classification": { "main": [[{ "node": "Is Actionable?", "type": "main", "index": 0 }]] },
+    "Is Actionable?": {
+      "main": [
+        [{ "node": "Normalize Company For Match", "type": "main", "index": 0 }],
+        [{ "node": "Shape Skipped (Other)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize Company For Match": { "main": [[{ "node": "Fuzzy Match Posting", "type": "main", "index": 0 }]] },
+    "Fuzzy Match Posting": { "main": [[{ "node": "Combine Match Result", "type": "main", "index": 0 }]] },
+    "Combine Match Result": { "main": [[{ "node": "Build Alert", "type": "main", "index": 0 }]] },
+    "Build Alert": {
+      "main": [[
+        { "node": "Send Discord Alert", "type": "main", "index": 0 },
+        { "node": "Update Application", "type": "main", "index": 0 },
+        { "node": "Merge Before Record", "type": "main", "index": 0 }
+      ]]
+    },
+    "Shape Skipped (Other)": { "main": [[{ "node": "Merge Before Record", "type": "main", "index": 1 }]] },
+    "Merge Before Record": { "main": [[{ "node": "Record Gmail Message", "type": "main", "index": 0 }]] },
+    "Record Gmail Message": { "main": [[{ "node": "Tally", "type": "main", "index": 0 }]] },
+    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "5e11a1a2b3c4d5e6"
+  },
+  "pinData": {}
+}

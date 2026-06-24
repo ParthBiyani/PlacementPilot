@@ -74,6 +74,12 @@ CREATE INDEX IF NOT EXISTS postings_first_seen_idx   ON postings (first_seen DES
 CREATE INDEX IF NOT EXISTS postings_norm_desc_trgm_idx
   ON postings USING gin (norm_description gin_trgm_ops);
 
+-- Fuzzy company-name matching for WF-4 (Gmail): a recruiter email's "From"
+-- name or signature rarely matches norm_company exactly (extra suffixes,
+-- abbreviations), so this backs a similarity() lookup rather than exact/ILIKE.
+CREATE INDEX IF NOT EXISTS postings_norm_company_trgm_idx
+  ON postings USING gin (norm_company gin_trgm_ops);
+
 -- ---------------------------------------------------------------------------
 -- Prompts and scoring
 -- ---------------------------------------------------------------------------
@@ -135,6 +141,21 @@ CREATE TABLE IF NOT EXISTS notifications (
   message_id TEXT,                             -- Discord message id, for in-place edits
   sent_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (posting_id, channel)
+);
+
+-- WF-4 (Gmail): dedup/idempotency cache on Gmail message ID, and a real
+-- audit trail of every classification made, independent of whether it
+-- matched a tracked posting.
+CREATE TABLE IF NOT EXISTS gmail_messages (
+  message_id        TEXT PRIMARY KEY,
+  classification     TEXT NOT NULL,             -- oa|interview|rejection|offer|referral|other
+  company            TEXT,
+  role               TEXT,
+  deadline           TEXT,                      -- verbatim, never inferred -- same rule as evaluations
+  matched_posting_id TEXT REFERENCES postings(id),
+  match_similarity   NUMERIC(4,3),               -- pg_trgm score for the match, null if unmatched
+  invalid            BOOLEAN NOT NULL DEFAULT false,
+  processed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------------
