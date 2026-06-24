@@ -19,13 +19,13 @@ Every workflow is entered exactly one way. Nothing is invoked ad hoc.
 | `WF-L1` lib-normalize | Execute Workflow (called by others) | on demand | ✅ |
 | `WF-0` selftest | Schedule Trigger | daily | ✅ |
 | `WF-1` collect-ats | Schedule Trigger | hourly | ✅ (built, tested; **not yet activated**) |
-| `WF-1b` collect-aggregators | Schedule Trigger | daily | ✅ (SerpApi built+verified; JSearch scaffolded only — **not yet activated**) |
+| `WF-1b` collect-aggregators | Schedule Trigger | daily | ✅ (SerpApi + JSearch + Careerjet all built+verified live — **not yet activated**) |
 | `WF-1c` collect-pages | Schedule Trigger | daily | ✅ (built, tested; **not yet activated**) |
 | `WF-1d` discover | Schedule Trigger | weekly | ✅ (built, tested; **not yet activated**) |
 | `WF-2` score | Execute Workflow (from collectors) | per batch | ✅ |
 | `WF-3` notify | Execute Workflow (from WF-2) | per posting | ✅ |
 | `WF-3b` inbound | **Webhook** — the only public surface | on interaction | ⬜ |
-| `WF-4` gmail | Gmail Trigger | 15 min | ⬜ |
+| `WF-4` gmail | Gmail Trigger | 1 min poll | ✅ (built, verified live; **not yet activated**) |
 | `WF-5` error | Error Workflow on every workflow above | on failure | ✅ |
 | `WF-6` eval | Manual Trigger / pre-promotion | on demand | ⬜ |
 
@@ -210,15 +210,24 @@ Schedule (daily)
 by hand before building, not re-verified live per run, and there's no ETag/conditional-request layer on
 the sitemap fetches yet. Worth adding if a third Tier D source needs the same treatment.
 
-### Gmail — `WF-4`
+### Gmail — `WF-4` (built and verified live)
 ```
-Gmail Trigger (15m, read-only)
-  └─► cache check on message ID
-      └─► Anthropic classify {oa|interview|rejection|offer|referral|other}
-          └─► Code: extract company / role / deadline
-              └─► fuzzy-match to postings.company
-                  └─► IF ≠ other → WF-3 notify + UPDATE applications
+Gmail Trigger (1m poll, read-only, simple:false for full body)
+  └─► Map Gmail Fields (flattens id/subject/from.text/text → message_id/subject/from_text/body_text —
+      Gmail Trigger's real field names don't match what the rest of the workflow expects; see DECISIONS.md)
+      └─► cache check on gmail_messages(message_id), guaranteed-row LEFT JOIN
+          └─► Anthropic classify {oa|interview|rejection|offer|referral|other} + company/role/deadline,
+              verbatim-only, one retry on invalid JSON (same pattern as WF-2)
+              └─► IF classification ≠ other:
+                    fuzzy-match company (pg_trgm) → Build Alert → fans out in parallel to:
+                      Send Discord Alert, Update Application (applications upsert), Merge Before Record
+                  ELSE: Shape Skipped (Other) → Merge Before Record
+              └─► Record Gmail Message (gmail_messages insert) → Tally → Write Run
 ```
+Notify is direct (not via WF-3) — WF-3's shape is posting/score-specific and `notifications`'s
+`UNIQUE(posting_id, channel)` doesn't fit a Gmail-classification event. `Build Alert`'s three parallel
+targets are deliberate: the Discord node overwrites `$json` with its own response, so anything needing the
+original fields (`Update Application`, `Merge Before Record`) must branch off *before* it, not after.
 
 ### Discovery — `WF-1d`
 ```
@@ -674,3 +683,23 @@ silently never reached the query builder regardless of the day-of-week gate. Ver
 
 WF-1b left `active: false`. **Phase 4 status:** WF-1d, WF-1c, and WF-1b all built and verified live.
 Remaining: probing Keka/Darwinbox/Zoho Recruit and a free-tier usage projection across every provider.
+
+### 2026-06-24 — WF-4 gmail built and verified live; Phase 8 complete
+
+Built `WF-4 gmail` (23 nodes) — Phase 8. Owner opted to skip Phase 5 (Discord interactions, needs a
+Cloudflare Tunnel) for now, so this went next rather than in TODO order.
+
+First live test surfaced two real bugs, both written up in full in `DECISIONS.md`: the Discord node
+overwriting `$json` (same class of bug as HTTP Request nodes), fixed by fanning `Build Alert` out to three
+parallel targets instead of chaining through Discord; and, the actual root cause of the persistent error,
+`Check Already Processed` assuming field names (`message_id`/`from_text`/`body_text`) that don't exist on
+Gmail Trigger's real output (`id`/`from.text`/`text`) — `message_id` was `NULL` from the very first node,
+riding through the whole pipeline until the final insert's not-null constraint caught it. Fixed with a new
+`Map Gmail Fields` node right after the trigger.
+
+Verified live after both fixes: a real inbox poll produced a real `gmail_messages` row with a genuine
+non-null `message_id`, correctly classified `other`, correctly skipped the Discord branch. The
+actionable/alert/fuzzy-match branch was independently confirmed in the earlier (Bug-1-only) test — a real
+Discord alert sent and visually confirmed — so both branches are real-data-verified, across two runs.
+
+WF-4 left `active: false`, same standing policy as WF-1/WF-1b/WF-1c/WF-1d. **Phase 8 is complete.**

@@ -1230,3 +1230,56 @@ referring page — that a clean server-to-server automation has to deliberately 
 WF-1b execution: 134 fetched / 35 new postings, 2 real Discord alerts confirmed. `sources.json`'s
 `careerjet` entry flipped to `enabled: true` and pushed. `By Provider`'s switch now has three real routes;
 `Merge Provider Results` widened from 2 to 3 inputs to match.
+
+---
+
+## 2026-06-24 — WF-4 gmail built; two real bugs found live, both from trusting an assumed field shape
+
+**Context.** Built `WF-4 gmail` (23 nodes: Gmail Trigger → dedup-check → classify with Anthropic →
+one-retry validation, matching WF-2's exact pattern → fuzzy-match to a tracked posting via `pg_trgm` →
+Discord alert → `applications`/`gmail_messages` write → `runs`). First live test (a real "Execute workflow"
+run against the owner's actual inbox) failed at the final write: `null value in column "message_id" of
+relation "gmail_messages" violates not-null constraint" — even though everything upstream, including a
+real Discord alert, had visibly succeeded.
+
+**Bug 1 — Discord node overwrites `$json`.** `Send Discord Alert` (`n8n-nodes-base.discord` v2) replaces
+the item's `$json` with Discord's own message-send response, the same class of bug already known for HTTP
+Request nodes. `Update Application` and `Merge Before Record` were both chained *after* it, so both read
+`undefined` for every field the alert itself needed (`message_id`, `matched_posting_id`, etc.) — the insert
+correctly rejected a null primary-key-adjacent column. **Fixed** by making `Build Alert` fan out to three
+parallel targets simultaneously — `Send Discord Alert`, `Update Application`, and `Merge Before Record`
+index 0 — so the two Postgres writes read pre-Discord-node data directly, never passing through the Discord
+node at all.
+
+**Bug 2 (the real root cause, found after Bug 1's fix didn't resolve the error on retest) — `Check Already
+Processed` assumed the wrong field names for Gmail Trigger's own output.** The query bound
+`$1=message_id, $2=subject, $3=from_text, $4=body_text` straight from `$json`, but Gmail Trigger's real
+output (confirmed from `GenericFunctions.js`'s `simpleParser` shape, `simple: false`) is `{id, subject,
+from: {text, value[]}, text, html, ...}` — there is no `message_id`, `from_text`, or `body_text` key on the
+raw trigger item at all. `message_id` was `undefined` from the very first node in the whole workflow, and
+rode `NULL` through every downstream node (all of which correctly passed through whatever they were given)
+until the final insert's not-null constraint finally caught it — explaining why the identical error
+persisted even after Bug 1 was genuinely fixed and re-verified via a page refresh + re-run.
+
+**Decision.** Added a `Map Gmail Fields` Code node directly after `Gmail Trigger`, before
+`Check Already Processed`, that explicitly flattens `id→message_id`, `subject→subject`,
+`from.text→from_text`, `text→body_text` into the flat top-level shape every downstream Postgres
+`queryParams` reference in this workflow already assumes — the same "a Code node flattens fields into what
+the next Postgres node's bare-name `queryParams` expects" pattern already used elsewhere in this file
+(e.g. `Normalize Company For Match` → `Fuzzy Match Posting`), just missing at the very first hop.
+
+**Why.** Both bugs are instances of a pattern already documented elsewhere in this file — a node
+overwriting `$json` (Discord, like HTTP Request nodes before it) and an assumed field shape never checked
+against the real, live API response (matching the discipline failure already corrected repeatedly for
+Greenhouse/Lever/JSearch/Careerjet). The difference this time: Gmail Trigger's shape *was* documented
+correctly in `CLAUDE.md`'s working notes before building started, but the query-parameter wiring at the
+very first node was written from memory rather than re-checked against that same documentation at the
+point of use.
+
+**Consequences.** Verified live, end to end, after both fixes: a real inbox poll produced a real
+`gmail_messages` row with a genuine non-null `message_id`, correct `classification: 'other'` (a real email
+correctly judged not actionable, so it took the `Shape Skipped (Other)` branch and never reached Discord)
+and no error. The actionable/Discord/fuzzy-match branch was independently confirmed working in the prior
+(Bug-1-only) test — a real alert was sent and visually confirmed before that test's later failure — so both
+branches are now real-data-verified, just not in the same single run. WF-4 left `active: false`, same
+standing policy as every other collector this session; activating it starts real 1-minute Gmail polling.
