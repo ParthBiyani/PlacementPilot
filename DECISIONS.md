@@ -1283,3 +1283,117 @@ and no error. The actionable/Discord/fuzzy-match branch was independently confir
 (Bug-1-only) test — a real alert was sent and visually confirmed before that test's later failure — so both
 branches are now real-data-verified, just not in the same single run. WF-4 left `active: false`, same
 standing policy as every other collector this session; activating it starts real 1-minute Gmail polling.
+
+---
+
+## 2026-08-20 — Phase 6 (near-duplicate detection) declined by the owner
+
+**Context.** Owner explicitly said "I don't want near dup detection" after reviewing what Phase 6 would
+involve (hand-labeling 50 pairs, sweeping a `pg_trgm` similarity threshold for max F1, adding
+`canonical_id`).
+
+**Decision.** Phase 6 is not being built. Exact-duplicate detection (WF-L1's hash-based key, already
+running unconditionally in every collector's `Dedup Upsert`) is unaffected and continues exactly as
+before — the owner separately confirmed exact dedup across sources must stay. Only the *fuzzy*
+near-duplicate layer (same job, worded differently across sources) is dropped.
+
+**Why.** Owner's call — the added complexity (hand-labeling, threshold sweep, an extra `postings` column)
+isn't worth it for the value at this stage.
+
+**Consequences.** `postings_norm_company_trgm_idx` (the GIN trigram index added for WF-4's Gmail
+fuzzy-company-match, a *different* feature) stays — it's load-bearing for WF-4, not Phase 6. `CLAUDE.md`'s
+Phase 6 TODO section is marked declined rather than deleted, per the file's own "never delete unfinished
+items" rule — it's a record of a decision, not incomplete work waiting to be picked up.
+
+---
+
+## 2026-08-20 — Match criteria retuned: fresher/2027-batch/full-time-or-PPO, real compensation floors
+
+**Context.** Owner gave explicit, concrete criteria for the first time since the original profile was
+built from `Resumes/`: full-time roles or internships with an explicit conversion path (no standalone
+internships), India-or-remote locations only, minimum 20 LPA CTC (15 LPA in-hand) for full-time / minimum
+₹75,000/month stipend for internships (foreign currency compensation is fine), fresher-only (0 years
+experience — only short internships on record), 2027 graduation batch only.
+
+**Decision.** Location stays enforced by the existing structural prefilter in `wf2_score.json`'s
+`Prefilter` node (already correctly rejects non-remote, non-India, non-allowed-city postings — no change
+needed). Everything else — employment-type/PPO judgment, compensation floors, experience level, batch
+eligibility — **cannot** be reliably prefiltered structurally: most postings have no clean numeric CTC
+field, and "internship with PPO" vs. "pure internship" requires reading free text. Folded all four into
+the LLM scoring prompt itself as explicit HARD REQUIREMENTS, parameterized from `preferences.json`'s new
+`must_have` fields (`min_ctc_lpa`, `min_in_hand_lpa`, `min_stipend_inr_per_month`, `graduation_batch`) and
+`exclude.pure_internship_no_conversion` — so a future preferences edit auto-propagates into the prompt
+text and correctly busts `prompt_version` (same mechanism already used for `deadline`/`eligibility`/
+`ctc_or_stipend`). Each new rule explicitly preserves the existing ambiguity policy: if the posting
+doesn't state a number/requirement, don't penalize for it — only reject when the posting explicitly states
+something below the floor. Also broadened `queries` in `preferences.json` to add full-time-oriented
+aggregator search terms — the existing set skewed almost entirely toward "intern" queries, which would
+have kept full-time postings from ever being surfaced by WF-1b regardless of how well the scorer could now
+judge them.
+
+**Why.** Matches this project's own established philosophy (`CLAUDE.md`: "the prefilter is conservative...
+reject only on unambiguous mismatch; anything ambiguous goes to the LLM") — these four new criteria are
+exactly the kind of free-text judgment call the prefilter was never meant to attempt.
+
+**Consequences — verified live with real Anthropic calls**, not assumed. Built a throwaway test workflow
+(`_TEST wf2 criteria`, since deleted) with 5 synthetic postings covering every new rule, fed through the
+real, live-retuned WF-2. All five landed exactly as intended: a pure internship at ₹15k/month with no PPO
+scored 15 (below floor + no conversion path); a fresher full-time SDE role at 25 LPA, 2027-batch-eligible
+scored 92 and notified; a role requiring 3+ years experience scored 15 (fails fresher requirement); a PPO
+internship at ₹85k/month scored 92 and notified; a full-time role at 8 LPA (below the 20 LPA floor) scored
+15. Two real Discord alerts landed for the two genuinely-matching postings, confirmed by the owner. Test
+postings/evaluations/notifications and the throwaway workflow file were deleted after verification.
+
+---
+
+## 2026-08-20 — Real gap found: WF-L0's fallback-to-cache guarantee never actually covered a connection-level failure
+
+**Context.** While re-testing WF-2 against the retuned criteria, `config_cache` had to be seeded manually
+because `raw.githubusercontent.com` was genuinely unreachable from this host for an extended stretch (DNS
+resolution failures on `git push` to `github.com` too — a real, external connectivity problem on this
+network, confirmed by `ping`/`wget` checks: general internet and `api.anthropic.com` were both reachable
+while GitHub specifically was not). This real outage is what surfaced the bug below — it was never
+triggered by any of Phase 3's earlier, deliberately-contrived fallback tests.
+
+**The bug.** `wf_l0_config.json`'s `Fetch Config` node relies entirely on `options.ignoreResponseCode:
+true` plus `Decide Outcome`'s own status-code branching to decide `fresh` / `cached_not_modified` /
+`fallback_alarm` / `hard_fail_alarm`. `ignoreResponseCode` only suppresses treating a non-2xx **HTTP
+status** as a node error — it does nothing for a connection-level failure (DNS failure, TLS handshake
+reset, connection refused, timeout). Those still make the HTTP Request node **throw**, which aborts the
+whole workflow before `Decide Outcome` ever runs — bypassing the fallback-to-cache logic entirely. Two
+real connection-level failures were observed live, back to back, with genuinely different error text each
+time ("Client network socket disconnected before secure TLS connection was established", then "The
+service refused the connection — perhaps it is offline") — both from a real, ongoing GitHub outage on this
+network, not simulated. Confirmed the cache row itself was fine throughout (`config_cache.body` correctly
+had the up-to-date content, verified by replaying `Get Cached`'s exact query directly against Postgres) —
+the fallback logic simply never got a chance to run.
+
+**Decision.** Added `retryOnFail: true, maxTries: 3, waitBetweenTries: 2000, continueOnFail: true` to
+`Fetch Config` — the exact same pattern WF-1's three provider HTTP nodes already use (`CLAUDE.md`'s own
+Phase 3 TODO: "Retry on Fail (3, exponential) on WF-1's three HTTP nodes; Continue On Fail per source").
+`Decide Outcome`'s existing `else if (cached.cached_body) { fallback_alarm } else { hard_fail_alarm }`
+branch already handles a non-200/304 item generically and needed no changes — it just needed to actually
+receive an item instead of the whole node throwing past it.
+
+**Why this matters.** This was a real, previously-unverified gap in a guarantee this project has claimed
+since Phase 0/1: "on fetch failure: use last good cache and alarm. Never fail silently." Every earlier
+Phase 3 test of this path (documented 2026-08-14, "WF-1 zero-result gap, WF-L0 fallback alarm, both
+verified live") used a **seeded bad filename** to force a 404-shaped HTTP response — which exercises
+`Decide Outcome`'s status-code branching correctly, but never exercises a genuine connection-level failure,
+because a 404 is still a real HTTP response the node happily returns. A real network outage is a
+qualitatively different failure mode, and this project had never actually tested it until an outage
+happened to occur naturally during unrelated work.
+
+**Consequences.** Also learned, separately, mid-session: this n8n version requires a sub-workflow to be
+`active: true` in the database for `source: database` Execute Workflow resolution to succeed — contradicts
+earlier-session assumptions (WF-L0/WF-L1/WF-2/WF-3 all committed with `active: false`, matching the "no
+real trigger to arm" convention). `WF-L1` and `WF-3` happened to already be `active: true` in the live DB
+from an earlier `publish:workflow` side effect and were never touched again, which is why this was never
+noticed before — but `import:workflow` **always syncs `active` from the file**, silently deactivating a
+previously-active sub-workflow on any future JSON edit. **Standing rule going forward: after
+`import:workflow` on WF-L0/WF-L1/WF-2/WF-3 (or any future pure Execute-Workflow-trigger library workflow),
+always run `publish:workflow --id=<id>` immediately after, then restart n8n if it's running** — import
+alone is not sufficient for these four files, even though it always was for workflows with their own
+real trigger being intentionally left inactive (WF-1/WF-1b/WF-1c/WF-1d/WF-4). Verified end to end after
+both fixes: the retuned-criteria test above ran successfully afterward, with a real fallback-alarm-free
+success path once GitHub connectivity itself recovered.

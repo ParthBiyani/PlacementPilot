@@ -7,9 +7,18 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [200, 400],
+      "position": [
+        200,
+        400
+      ],
       "parameters": {
-        "rule": { "interval": [{ "field": "days" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "days"
+            }
+          ]
+        }
       }
     },
     {
@@ -17,7 +26,10 @@
       "name": "Request Sources Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 400],
+      "position": [
+        420,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -29,10 +41,17 @@
       "name": "Call WF-L0 Sources",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [640, 400],
+      "position": [
+        640,
+        400
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "8e45da373fd94a90", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -41,7 +60,10 @@
       "name": "Request Preferences Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [860, 400],
+      "position": [
+        860,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -53,10 +75,17 @@
       "name": "Call WF-L0 Preferences",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1080, 400],
+      "position": [
+        1080,
+        400
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "8e45da373fd94a90", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -65,7 +94,10 @@
       "name": "Combine Configs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 400],
+      "position": [
+        1300,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -77,7 +109,10 @@
       "name": "Filter Enabled Aggregators",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1520, 400],
+      "position": [
+        1520,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -89,20 +124,33 @@
       "name": "Check Quota",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [1740, 400],
+      "position": [
+        1740,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT $1::text AS provider, $3::int AS monthly_limit, COALESCE(q.used, 0) AS used FROM (SELECT 1) d LEFT JOIN api_quota q ON q.provider = $1 AND q.period_month = $2",
-        "additionalFields": { "queryParams": "provider,period_month,monthly_limit" }
+        "additionalFields": {
+          "queryParams": "provider,period_month,monthly_limit"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000009",
       "name": "Add Period Month",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1740, 220],
+      "position": [
+        1740,
+        220
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -114,7 +162,10 @@
       "name": "Filter Under Quota",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1960, 400],
+      "position": [
+        1960,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -126,16 +177,31 @@
       "name": "By Provider",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
-      "position": [2180, 400],
+      "position": [
+        2180,
+        400
+      ],
       "parameters": {
         "mode": "rules",
         "dataType": "string",
         "value1": "={{ $json.provider }}",
         "rules": {
           "rules": [
-            { "operation": "equal", "value2": "serpapi", "output": 0 },
-            { "operation": "equal", "value2": "jsearch", "output": 1 },
-            { "operation": "equal", "value2": "careerjet", "output": 2 }
+            {
+              "operation": "equal",
+              "value2": "serpapi",
+              "output": 0
+            },
+            {
+              "operation": "equal",
+              "value2": "jsearch",
+              "output": 1
+            },
+            {
+              "operation": "equal",
+              "value2": "careerjet",
+              "output": 2
+            }
           ]
         },
         "fallbackOutput": -1
@@ -146,7 +212,10 @@
       "name": "Build SerpApi Queries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 280],
+      "position": [
+        2400,
+        280
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -158,7 +227,10 @@
       "name": "Call SerpApi",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [2620, 280],
+      "position": [
+        2620,
+        280
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -167,16 +239,28 @@
         "responseFormat": "string",
         "dataPropertyName": "data",
         "jsonParameters": true,
-        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 100000 }
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 100000
+        }
       },
-      "credentials": { "httpQueryAuth": { "id": "eqNbYN3NeuvtIgvH", "name": "Query Auth account" } }
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "eqNbYN3NeuvtIgvH",
+          "name": "Query Auth account"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-00000000000e",
       "name": "Route SerpApi Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2840, 280],
+      "position": [
+        2840,
+        280
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -188,12 +272,26 @@
       "name": "Filter Direct Results",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [3060, 280],
+      "position": [
+        3060,
+        280
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
-            { "leftValue": "={{ $json._route }}", "rightValue": "direct", "operator": { "type": "string", "operation": "equals" } }
+            {
+              "leftValue": "={{ $json._route }}",
+              "rightValue": "direct",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
           ],
           "combinator": "and"
         }
@@ -204,12 +302,26 @@
       "name": "Filter LLM Candidates",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [3060, 160],
+      "position": [
+        3060,
+        160
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
-            { "leftValue": "={{ $json._route }}", "rightValue": "llm", "operator": { "type": "string", "operation": "equals" } }
+            {
+              "leftValue": "={{ $json._route }}",
+              "rightValue": "llm",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
           ],
           "combinator": "and"
         }
@@ -220,11 +332,17 @@
       "name": "Extract Tweet Job Details",
       "type": "@n8n/n8n-nodes-langchain.anthropic",
       "typeVersion": 1,
-      "position": [3280, 160],
+      "position": [
+        3280,
+        160
+      ],
       "parameters": {
         "resource": "text",
         "operation": "message",
-        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "modelId": {
+          "mode": "id",
+          "value": "claude-haiku-4-5-20251001"
+        },
         "messages": {
           "values": [
             {
@@ -240,14 +358,22 @@
           "temperature": 0
         }
       },
-      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+      "credentials": {
+        "anthropicApi": {
+          "id": "QLxm16bJPwDvuMtl",
+          "name": "Anthropic account"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-00000000001d",
       "name": "Validate Tweet Extraction",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3500, 160],
+      "position": [
+        3500,
+        160
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -259,12 +385,26 @@
       "name": "Keep Valid Tweet Extractions",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [3720, 160],
+      "position": [
+        3720,
+        160
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
-            { "leftValue": "={{ $json.skip }}", "rightValue": true, "operator": { "type": "boolean", "operation": "notEquals" } }
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
           ],
           "combinator": "and"
         }
@@ -275,15 +415,24 @@
       "name": "Combine SerpApi Postings",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [3060, 400],
-      "parameters": { "mode": "append", "numberInputs": 2 }
+      "position": [
+        3060,
+        400
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-00000000000f",
       "name": "Build JSearch Queries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 520],
+      "position": [
+        2400,
+        520
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -295,7 +444,10 @@
       "name": "Call JSearch",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [2620, 520],
+      "position": [
+        2620,
+        520
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -305,16 +457,28 @@
         "dataPropertyName": "data",
         "jsonParameters": true,
         "headerParametersJson": "{\"X-RapidAPI-Host\": \"jsearch.p.rapidapi.com\"}",
-        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 30000 }
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 30000
+        }
       },
-      "credentials": { "httpHeaderAuth": { "id": "sMw9OMpBtGHWjCLx", "name": "Header Auth account" } }
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sMw9OMpBtGHWjCLx",
+          "name": "Header Auth account"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000011",
       "name": "Parse JSearch Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2840, 520],
+      "position": [
+        2840,
+        520
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -326,15 +490,24 @@
       "name": "Merge Provider Results",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [3060, 400],
-      "parameters": { "mode": "append", "numberInputs": 3 }
+      "position": [
+        3060,
+        400
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000020",
       "name": "Build Careerjet Queries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 760],
+      "position": [
+        2400,
+        760
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -346,7 +519,10 @@
       "name": "Call Careerjet",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [2620, 760],
+      "position": [
+        2620,
+        760
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -356,16 +532,28 @@
         "dataPropertyName": "data",
         "jsonParameters": true,
         "headerParametersJson": "{\"Referer\": \"https://www.parth.com/\"}",
-        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 20000 }
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 20000
+        }
       },
-      "credentials": { "httpBasicAuth": { "id": "KcZqBgOuK89XknMv", "name": "Unnamed credential" } }
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "KcZqBgOuK89XknMv",
+          "name": "Unnamed credential"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000022",
       "name": "Parse Careerjet Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2840, 760],
+      "position": [
+        2840,
+        760
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -377,10 +565,17 @@
       "name": "Call WF-L1",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [3280, 400],
+      "position": [
+        3280,
+        400
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "773d1f4a0f6b4bf7", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "773d1f4a0f6b4bf7",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -389,20 +584,33 @@
       "name": "Dedup Upsert",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [3500, 400],
+      "position": [
+        3500,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, source_id, (xmax = 0) AS was_inserted",
-        "additionalFields": { "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date" }
+        "additionalFields": {
+          "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000015",
       "name": "Build Score Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3500, 620],
+      "position": [
+        3500,
+        620
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -414,10 +622,17 @@
       "name": "Call WF-2",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [3720, 620],
+      "position": [
+        3720,
+        620
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "c4f8a29d1e6b3075", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "c4f8a29d1e6b3075",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -426,20 +641,33 @@
       "name": "Update Quota",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [3720, 220],
+      "position": [
+        3720,
+        220
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO api_quota (provider, period_month, used, limit_calls, updated_at) VALUES ($1, $2, $3, $4, now()) ON CONFLICT (provider, period_month) DO UPDATE SET used = api_quota.used + $3, updated_at = now() RETURNING provider, used",
-        "additionalFields": { "queryParams": "provider,period_month,calls_made,monthly_limit" }
+        "additionalFields": {
+          "queryParams": "provider,period_month,calls_made,monthly_limit"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "a1b1c1d1-0001-4000-8000-000000000018",
       "name": "Count Calls Made",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3060, 220],
+      "position": [
+        3060,
+        220
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -451,7 +679,10 @@
       "name": "Tally",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3940, 400],
+      "position": [
+        3940,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -463,69 +694,407 @@
       "name": "Write Run",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [4160, 400],
+      "position": [
+        4160,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count) VALUES ('WF-1b', now(), now(), $1, $2) RETURNING id",
-        "additionalFields": { "queryParams": "fetched,new_count" }
+        "additionalFields": {
+          "queryParams": "fetched,new_count"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     }
   ],
   "connections": {
-    "Schedule Trigger": { "main": [[{ "node": "Request Sources Config", "type": "main", "index": 0 }]] },
-    "Request Sources Config": { "main": [[{ "node": "Call WF-L0 Sources", "type": "main", "index": 0 }]] },
-    "Call WF-L0 Sources": { "main": [[{ "node": "Request Preferences Config", "type": "main", "index": 0 }]] },
-    "Request Preferences Config": { "main": [[{ "node": "Call WF-L0 Preferences", "type": "main", "index": 0 }]] },
-    "Call WF-L0 Preferences": { "main": [[{ "node": "Combine Configs", "type": "main", "index": 0 }]] },
-    "Combine Configs": { "main": [[{ "node": "Filter Enabled Aggregators", "type": "main", "index": 0 }]] },
-    "Filter Enabled Aggregators": { "main": [[{ "node": "Add Period Month", "type": "main", "index": 0 }]] },
-    "Add Period Month": { "main": [[{ "node": "Check Quota", "type": "main", "index": 0 }]] },
-    "Check Quota": { "main": [[{ "node": "Filter Under Quota", "type": "main", "index": 0 }]] },
-    "Filter Under Quota": { "main": [[{ "node": "By Provider", "type": "main", "index": 0 }]] },
-    "By Provider": {
+    "Schedule Trigger": {
       "main": [
-        [{ "node": "Build SerpApi Queries", "type": "main", "index": 0 }],
-        [{ "node": "Build JSearch Queries", "type": "main", "index": 0 }],
-        [{ "node": "Build Careerjet Queries", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Request Sources Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Build SerpApi Queries": { "main": [[{ "node": "Call SerpApi", "type": "main", "index": 0 }]] },
-    "Call SerpApi": { "main": [[{ "node": "Route SerpApi Results", "type": "main", "index": 0 }]] },
+    "Request Sources Config": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L0 Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L0 Sources": {
+      "main": [
+        [
+          {
+            "node": "Request Preferences Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Preferences Config": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L0 Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L0 Preferences": {
+      "main": [
+        [
+          {
+            "node": "Combine Configs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Configs": {
+      "main": [
+        [
+          {
+            "node": "Filter Enabled Aggregators",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Enabled Aggregators": {
+      "main": [
+        [
+          {
+            "node": "Add Period Month",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Period Month": {
+      "main": [
+        [
+          {
+            "node": "Check Quota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Quota": {
+      "main": [
+        [
+          {
+            "node": "Filter Under Quota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Under Quota": {
+      "main": [
+        [
+          {
+            "node": "By Provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "By Provider": {
+      "main": [
+        [
+          {
+            "node": "Build SerpApi Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build JSearch Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Careerjet Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SerpApi Queries": {
+      "main": [
+        [
+          {
+            "node": "Call SerpApi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call SerpApi": {
+      "main": [
+        [
+          {
+            "node": "Route SerpApi Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Route SerpApi Results": {
-      "main": [[
-        { "node": "Filter Direct Results", "type": "main", "index": 0 },
-        { "node": "Filter LLM Candidates", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Filter Direct Results",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter LLM Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Filter Direct Results": { "main": [[{ "node": "Combine SerpApi Postings", "type": "main", "index": 0 }]] },
-    "Filter LLM Candidates": { "main": [[{ "node": "Extract Tweet Job Details", "type": "main", "index": 0 }]] },
-    "Extract Tweet Job Details": { "main": [[{ "node": "Validate Tweet Extraction", "type": "main", "index": 0 }]] },
-    "Validate Tweet Extraction": { "main": [[{ "node": "Keep Valid Tweet Extractions", "type": "main", "index": 0 }]] },
-    "Keep Valid Tweet Extractions": { "main": [[{ "node": "Combine SerpApi Postings", "type": "main", "index": 1 }]] },
-    "Combine SerpApi Postings": { "main": [[{ "node": "Merge Provider Results", "type": "main", "index": 0 }]] },
-    "Build JSearch Queries": { "main": [[{ "node": "Call JSearch", "type": "main", "index": 0 }]] },
-    "Call JSearch": { "main": [[{ "node": "Parse JSearch Results", "type": "main", "index": 0 }]] },
-    "Parse JSearch Results": { "main": [[{ "node": "Merge Provider Results", "type": "main", "index": 1 }]] },
-    "Build Careerjet Queries": { "main": [[{ "node": "Call Careerjet", "type": "main", "index": 0 }]] },
-    "Call Careerjet": { "main": [[{ "node": "Parse Careerjet Results", "type": "main", "index": 0 }]] },
-    "Parse Careerjet Results": { "main": [[{ "node": "Merge Provider Results", "type": "main", "index": 2 }]] },
+    "Filter Direct Results": {
+      "main": [
+        [
+          {
+            "node": "Combine SerpApi Postings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter LLM Candidates": {
+      "main": [
+        [
+          {
+            "node": "Extract Tweet Job Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Tweet Job Details": {
+      "main": [
+        [
+          {
+            "node": "Validate Tweet Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Tweet Extraction": {
+      "main": [
+        [
+          {
+            "node": "Keep Valid Tweet Extractions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Valid Tweet Extractions": {
+      "main": [
+        [
+          {
+            "node": "Combine SerpApi Postings",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine SerpApi Postings": {
+      "main": [
+        [
+          {
+            "node": "Merge Provider Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build JSearch Queries": {
+      "main": [
+        [
+          {
+            "node": "Call JSearch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call JSearch": {
+      "main": [
+        [
+          {
+            "node": "Parse JSearch Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSearch Results": {
+      "main": [
+        [
+          {
+            "node": "Merge Provider Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Build Careerjet Queries": {
+      "main": [
+        [
+          {
+            "node": "Call Careerjet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Careerjet": {
+      "main": [
+        [
+          {
+            "node": "Parse Careerjet Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Careerjet Results": {
+      "main": [
+        [
+          {
+            "node": "Merge Provider Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
     "Merge Provider Results": {
-      "main": [[
-        { "node": "Call WF-L1", "type": "main", "index": 0 },
-        { "node": "Count Calls Made", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Count Calls Made",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Call WF-L1": { "main": [[{ "node": "Dedup Upsert", "type": "main", "index": 0 }]] },
+    "Call WF-L1": {
+      "main": [
+        [
+          {
+            "node": "Dedup Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Dedup Upsert": {
-      "main": [[
-        { "node": "Tally", "type": "main", "index": 0 },
-        { "node": "Build Score Payload", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Tally",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Score Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Build Score Payload": { "main": [[{ "node": "Call WF-2", "type": "main", "index": 0 }]] },
-    "Count Calls Made": { "main": [[{ "node": "Update Quota", "type": "main", "index": 0 }]] },
-    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+    "Build Score Payload": {
+      "main": [
+        [
+          {
+            "node": "Call WF-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Calls Made": {
+      "main": [
+        [
+          {
+            "node": "Update Quota",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
   "settings": {

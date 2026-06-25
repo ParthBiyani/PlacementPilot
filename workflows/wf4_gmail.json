@@ -7,7 +7,10 @@
       "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.2,
-      "position": [200, 400],
+      "position": [
+        200,
+        400
+      ],
       "parameters": {
         "event": "messageReceived",
         "simple": false,
@@ -15,11 +18,18 @@
           "q": "-category:promotions -category:social -category:forums"
         },
         "pollTimes": {
-          "item": [{ "mode": "everyMinute" }]
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
         }
       },
       "credentials": {
-        "gmailOAuth2": { "id": "8I5mJwOTBV0NzKih", "name": "Gmail account" }
+        "gmailOAuth2": {
+          "id": "8I5mJwOTBV0NzKih",
+          "name": "Gmail account"
+        }
       }
     },
     {
@@ -27,7 +37,10 @@
       "name": "Map Gmail Fields",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [310, 400],
+      "position": [
+        310,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -39,7 +52,10 @@
       "name": "Check Already Processed",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [420, 400],
+      "position": [
+        420,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT $1::text AS message_id, $2::text AS subject, $3::text AS from_text, $4::text AS body_text, (m.message_id IS NOT NULL) AS already_processed FROM (SELECT 1) d LEFT JOIN gmail_messages m ON m.message_id = $1",
@@ -47,18 +63,30 @@
           "queryParams": "message_id,subject,from_text,body_text"
         }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000003",
       "name": "Not Yet Processed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [640, 400],
+      "position": [
+        640,
+        400
+      ],
       "parameters": {
         "conditions": {
           "boolean": [
-            { "value1": "={{ $json.already_processed }}", "operation": "equal", "value2": false }
+            {
+              "value1": "={{ $json.already_processed }}",
+              "operation": "equal",
+              "value2": false
+            }
           ]
         }
       }
@@ -68,7 +96,10 @@
       "name": "Build Classify Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [860, 400],
+      "position": [
+        860,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -80,13 +111,24 @@
       "name": "Classify Email",
       "type": "@n8n/n8n-nodes-langchain.anthropic",
       "typeVersion": 1,
-      "position": [1080, 400],
+      "position": [
+        1080,
+        400
+      ],
       "parameters": {
         "resource": "text",
         "operation": "message",
-        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "modelId": {
+          "mode": "id",
+          "value": "claude-haiku-4-5-20251001"
+        },
         "messages": {
-          "values": [{ "role": "user", "content": "={{ $json.user_message }}" }]
+          "values": [
+            {
+              "role": "user",
+              "content": "={{ $json.user_message }}"
+            }
+          ]
         },
         "simplify": false,
         "options": {
@@ -95,14 +137,22 @@
           "temperature": 0
         }
       },
-      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+      "credentials": {
+        "anthropicApi": {
+          "id": "QLxm16bJPwDvuMtl",
+          "name": "Anthropic account"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000006",
       "name": "Validate Attempt 1",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 400],
+      "position": [
+        1300,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -114,10 +164,19 @@
       "name": "Attempt 1 Valid?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1520, 400],
+      "position": [
+        1520,
+        400
+      ],
       "parameters": {
         "conditions": {
-          "boolean": [{ "value1": "={{ $json.valid }}", "operation": "equal", "value2": true }]
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
         }
       }
     },
@@ -126,13 +185,24 @@
       "name": "Classify Email Retry",
       "type": "@n8n/n8n-nodes-langchain.anthropic",
       "typeVersion": 1,
-      "position": [1740, 560],
+      "position": [
+        1740,
+        560
+      ],
       "parameters": {
         "resource": "text",
         "operation": "message",
-        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "modelId": {
+          "mode": "id",
+          "value": "claude-haiku-4-5-20251001"
+        },
         "messages": {
-          "values": [{ "role": "user", "content": "={{ $json.retry_user_message }}" }]
+          "values": [
+            {
+              "role": "user",
+              "content": "={{ $json.retry_user_message }}"
+            }
+          ]
         },
         "simplify": false,
         "options": {
@@ -141,14 +211,22 @@
           "temperature": 0
         }
       },
-      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+      "credentials": {
+        "anthropicApi": {
+          "id": "QLxm16bJPwDvuMtl",
+          "name": "Anthropic account"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000009",
       "name": "Validate Attempt 2",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1960, 560],
+      "position": [
+        1960,
+        560
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -160,7 +238,10 @@
       "name": "Finalize From Attempt 1",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1740, 260],
+      "position": [
+        1740,
+        260
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -172,19 +253,32 @@
       "name": "Merge Classification",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [2180, 400],
-      "parameters": { "mode": "append", "numberInputs": 2 }
+      "position": [
+        2180,
+        400
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-00000000000c",
       "name": "Is Actionable?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [2400, 400],
+      "position": [
+        2400,
+        400
+      ],
       "parameters": {
         "conditions": {
           "string": [
-            { "value1": "={{ $json.classification }}", "operation": "notEqual", "value2": "other" }
+            {
+              "value1": "={{ $json.classification }}",
+              "operation": "notEqual",
+              "value2": "other"
+            }
           ]
         }
       }
@@ -194,7 +288,10 @@
       "name": "Normalize Company For Match",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2620, 280],
+      "position": [
+        2620,
+        280
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -206,20 +303,33 @@
       "name": "Fuzzy Match Posting",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [2840, 280],
+      "position": [
+        2840,
+        280
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT id AS matched_posting_id, company AS matched_company, role AS matched_role, similarity(norm_company, $1) AS match_similarity FROM postings WHERE $1 != '' AND similarity(norm_company, $1) > 0.35 ORDER BY match_similarity DESC LIMIT 1",
-        "additionalFields": { "queryParams": "norm_company_query" }
+        "additionalFields": {
+          "queryParams": "norm_company_query"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-00000000000f",
       "name": "Combine Match Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3060, 280],
+      "position": [
+        3060,
+        280
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -231,7 +341,10 @@
       "name": "Build Alert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3280, 280],
+      "position": [
+        3280,
+        280
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -243,14 +356,25 @@
       "name": "Send Discord Alert",
       "type": "n8n-nodes-base.discord",
       "typeVersion": 2,
-      "position": [3500, 280],
+      "position": [
+        3500,
+        280
+      ],
       "parameters": {
         "authentication": "botToken",
         "resource": "message",
         "operation": "send",
         "sendTo": "channel",
-        "guildId": { "__rl": true, "mode": "id", "value": "1537760475398545418" },
-        "channelId": { "__rl": true, "mode": "id", "value": "1537760929264041984" },
+        "guildId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1537760475398545418"
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1537760929264041984"
+        },
         "content": "",
         "embeds": {
           "values": [
@@ -263,27 +387,45 @@
           ]
         }
       },
-      "credentials": { "discordBotApi": { "id": "zuoho254CZQQSFRx", "name": "Discord Bot account" } }
+      "credentials": {
+        "discordBotApi": {
+          "id": "zuoho254CZQQSFRx",
+          "name": "Discord Bot account"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000012",
       "name": "Update Application",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [3720, 280],
+      "position": [
+        3720,
+        280
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO applications (posting_id, status, updated_at, notes) SELECT $1, $2, now(), $3 WHERE $1 IS NOT NULL ON CONFLICT (posting_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now(), notes = EXCLUDED.notes RETURNING posting_id",
-        "additionalFields": { "queryParams": "matched_posting_id,classification,subject" }
+        "additionalFields": {
+          "queryParams": "matched_posting_id,classification,subject"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000013",
       "name": "Shape Skipped (Other)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2620, 560],
+      "position": [
+        2620,
+        560
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -295,28 +437,47 @@
       "name": "Merge Before Record",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [3940, 400],
-      "parameters": { "mode": "append", "numberInputs": 2 }
+      "position": [
+        3940,
+        400
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000015",
       "name": "Record Gmail Message",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [4160, 400],
+      "position": [
+        4160,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO gmail_messages (message_id, classification, company, role, deadline, matched_posting_id, match_similarity, invalid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (message_id) DO NOTHING RETURNING message_id",
-        "additionalFields": { "queryParams": "message_id,classification,company,role,deadline,matched_posting_id,match_similarity,invalid" }
+        "additionalFields": {
+          "queryParams": "message_id,classification,company,role,deadline,matched_posting_id,match_similarity,invalid"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000016",
       "name": "Tally",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4380, 400],
+      "position": [
+        4380,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -328,53 +489,282 @@
       "name": "Write Run",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [4600, 400],
+      "position": [
+        4600,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, notified) VALUES ('WF-4', now(), now(), $1, $2) RETURNING id",
-        "additionalFields": { "queryParams": "fetched,notified" }
+        "additionalFields": {
+          "queryParams": "fetched,notified"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     }
   ],
   "connections": {
-    "Gmail Trigger": { "main": [[{ "node": "Map Gmail Fields", "type": "main", "index": 0 }]] },
-    "Map Gmail Fields": { "main": [[{ "node": "Check Already Processed", "type": "main", "index": 0 }]] },
-    "Check Already Processed": { "main": [[{ "node": "Not Yet Processed?", "type": "main", "index": 0 }]] },
-    "Not Yet Processed?": { "main": [[{ "node": "Build Classify Prompt", "type": "main", "index": 0 }], []] },
-    "Build Classify Prompt": { "main": [[{ "node": "Classify Email", "type": "main", "index": 0 }]] },
-    "Classify Email": { "main": [[{ "node": "Validate Attempt 1", "type": "main", "index": 0 }]] },
-    "Validate Attempt 1": { "main": [[{ "node": "Attempt 1 Valid?", "type": "main", "index": 0 }]] },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Map Gmail Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Gmail Fields": {
+      "main": [
+        [
+          {
+            "node": "Check Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Already Processed": {
+      "main": [
+        [
+          {
+            "node": "Not Yet Processed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Not Yet Processed?": {
+      "main": [
+        [
+          {
+            "node": "Build Classify Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build Classify Prompt": {
+      "main": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Email": {
+      "main": [
+        [
+          {
+            "node": "Validate Attempt 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Attempt 1": {
+      "main": [
+        [
+          {
+            "node": "Attempt 1 Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Attempt 1 Valid?": {
       "main": [
-        [{ "node": "Finalize From Attempt 1", "type": "main", "index": 0 }],
-        [{ "node": "Classify Email Retry", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Finalize From Attempt 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify Email Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Classify Email Retry": { "main": [[{ "node": "Validate Attempt 2", "type": "main", "index": 0 }]] },
-    "Finalize From Attempt 1": { "main": [[{ "node": "Merge Classification", "type": "main", "index": 0 }]] },
-    "Validate Attempt 2": { "main": [[{ "node": "Merge Classification", "type": "main", "index": 1 }]] },
-    "Merge Classification": { "main": [[{ "node": "Is Actionable?", "type": "main", "index": 0 }]] },
+    "Classify Email Retry": {
+      "main": [
+        [
+          {
+            "node": "Validate Attempt 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize From Attempt 1": {
+      "main": [
+        [
+          {
+            "node": "Merge Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Attempt 2": {
+      "main": [
+        [
+          {
+            "node": "Merge Classification",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Classification": {
+      "main": [
+        [
+          {
+            "node": "Is Actionable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Is Actionable?": {
       "main": [
-        [{ "node": "Normalize Company For Match", "type": "main", "index": 0 }],
-        [{ "node": "Shape Skipped (Other)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Normalize Company For Match",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shape Skipped (Other)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Normalize Company For Match": { "main": [[{ "node": "Fuzzy Match Posting", "type": "main", "index": 0 }]] },
-    "Fuzzy Match Posting": { "main": [[{ "node": "Combine Match Result", "type": "main", "index": 0 }]] },
-    "Combine Match Result": { "main": [[{ "node": "Build Alert", "type": "main", "index": 0 }]] },
-    "Build Alert": {
-      "main": [[
-        { "node": "Send Discord Alert", "type": "main", "index": 0 },
-        { "node": "Update Application", "type": "main", "index": 0 },
-        { "node": "Merge Before Record", "type": "main", "index": 0 }
-      ]]
+    "Normalize Company For Match": {
+      "main": [
+        [
+          {
+            "node": "Fuzzy Match Posting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Shape Skipped (Other)": { "main": [[{ "node": "Merge Before Record", "type": "main", "index": 1 }]] },
-    "Merge Before Record": { "main": [[{ "node": "Record Gmail Message", "type": "main", "index": 0 }]] },
-    "Record Gmail Message": { "main": [[{ "node": "Tally", "type": "main", "index": 0 }]] },
-    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+    "Fuzzy Match Posting": {
+      "main": [
+        [
+          {
+            "node": "Combine Match Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Match Result": {
+      "main": [
+        [
+          {
+            "node": "Build Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Discord Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Application",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Before Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape Skipped (Other)": {
+      "main": [
+        [
+          {
+            "node": "Merge Before Record",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Before Record": {
+      "main": [
+        [
+          {
+            "node": "Record Gmail Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Gmail Message": {
+      "main": [
+        [
+          {
+            "node": "Tally",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
   "settings": {

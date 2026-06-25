@@ -7,11 +7,17 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [200, 400],
+      "position": [
+        200,
+        400
+      ],
       "parameters": {
         "rule": {
           "interval": [
-            { "field": "weeks", "weeksInterval": 1 }
+            {
+              "field": "weeks",
+              "weeksInterval": 1
+            }
           ]
         }
       }
@@ -21,7 +27,10 @@
       "name": "Request Accelerators Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 400],
+      "position": [
+        420,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -33,7 +42,10 @@
       "name": "Call WF-L0",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [640, 400],
+      "position": [
+        640,
+        400
+      ],
       "parameters": {
         "source": "database",
         "workflowId": {
@@ -49,7 +61,10 @@
       "name": "Filter Enabled JSON Accelerators",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [860, 400],
+      "position": [
+        860,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -61,7 +76,10 @@
       "name": "Fetch Accelerator Data",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [1080, 400],
+      "position": [
+        1080,
+        400
+      ],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 3000,
@@ -85,7 +103,10 @@
       "name": "Extract Candidate Companies",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 400],
+      "position": [
+        1300,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -97,7 +118,10 @@
       "name": "Build Career Page Candidates",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1520, 400],
+      "position": [
+        1520,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -109,7 +133,10 @@
       "name": "Fetch Career Candidate Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [1740, 400],
+      "position": [
+        1740,
+        400
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -130,7 +157,10 @@
       "name": "Extract ATS Link Per Company",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1960, 400],
+      "position": [
+        1960,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -142,7 +172,10 @@
       "name": "Probe Confirmed Token",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2180, 400],
+      "position": [
+        2180,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -154,7 +187,10 @@
       "name": "Confirm Probe",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [2400, 400],
+      "position": [
+        2400,
+        400
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -174,7 +210,10 @@
       "name": "Build Discovered Source",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2620, 400],
+      "position": [
+        2620,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -186,7 +225,10 @@
       "name": "Upsert Discovered Source",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [2840, 400],
+      "position": [
+        2840,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO discovered_sources (id, accelerator, company, domain, probe_result, promoted, found_at) VALUES ($1, $2, $3, $4, $5::jsonb, false, now()) ON CONFLICT (id) DO UPDATE SET probe_result = EXCLUDED.probe_result, found_at = now() RETURNING id, ($5::jsonb->>'confirmed')::boolean AS confirmed",
@@ -206,7 +248,10 @@
       "name": "Tally",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3060, 400],
+      "position": [
+        3060,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -218,7 +263,10 @@
       "name": "Write Run",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [3280, 400],
+      "position": [
+        3280,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count) VALUES ('WF-1d', now(), now(), $1, $2) RETURNING id",
@@ -235,20 +283,160 @@
     }
   ],
   "connections": {
-    "Schedule Trigger": { "main": [[{ "node": "Request Accelerators Config", "type": "main", "index": 0 }]] },
-    "Request Accelerators Config": { "main": [[{ "node": "Call WF-L0", "type": "main", "index": 0 }]] },
-    "Call WF-L0": { "main": [[{ "node": "Filter Enabled JSON Accelerators", "type": "main", "index": 0 }]] },
-    "Filter Enabled JSON Accelerators": { "main": [[{ "node": "Fetch Accelerator Data", "type": "main", "index": 0 }]] },
-    "Fetch Accelerator Data": { "main": [[{ "node": "Extract Candidate Companies", "type": "main", "index": 0 }]] },
-    "Extract Candidate Companies": { "main": [[{ "node": "Build Career Page Candidates", "type": "main", "index": 0 }]] },
-    "Build Career Page Candidates": { "main": [[{ "node": "Fetch Career Candidate Page", "type": "main", "index": 0 }]] },
-    "Fetch Career Candidate Page": { "main": [[{ "node": "Extract ATS Link Per Company", "type": "main", "index": 0 }]] },
-    "Extract ATS Link Per Company": { "main": [[{ "node": "Probe Confirmed Token", "type": "main", "index": 0 }]] },
-    "Probe Confirmed Token": { "main": [[{ "node": "Confirm Probe", "type": "main", "index": 0 }]] },
-    "Confirm Probe": { "main": [[{ "node": "Build Discovered Source", "type": "main", "index": 0 }]] },
-    "Build Discovered Source": { "main": [[{ "node": "Upsert Discovered Source", "type": "main", "index": 0 }]] },
-    "Upsert Discovered Source": { "main": [[{ "node": "Tally", "type": "main", "index": 0 }]] },
-    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Request Accelerators Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Accelerators Config": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L0": {
+      "main": [
+        [
+          {
+            "node": "Filter Enabled JSON Accelerators",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Enabled JSON Accelerators": {
+      "main": [
+        [
+          {
+            "node": "Fetch Accelerator Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Accelerator Data": {
+      "main": [
+        [
+          {
+            "node": "Extract Candidate Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Candidate Companies": {
+      "main": [
+        [
+          {
+            "node": "Build Career Page Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Career Page Candidates": {
+      "main": [
+        [
+          {
+            "node": "Fetch Career Candidate Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Career Candidate Page": {
+      "main": [
+        [
+          {
+            "node": "Extract ATS Link Per Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract ATS Link Per Company": {
+      "main": [
+        [
+          {
+            "node": "Probe Confirmed Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probe Confirmed Token": {
+      "main": [
+        [
+          {
+            "node": "Confirm Probe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Probe": {
+      "main": [
+        [
+          {
+            "node": "Build Discovered Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Discovered Source": {
+      "main": [
+        [
+          {
+            "node": "Upsert Discovered Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Discovered Source": {
+      "main": [
+        [
+          {
+            "node": "Tally",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
   "settings": {

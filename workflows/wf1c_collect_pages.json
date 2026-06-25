@@ -7,9 +7,18 @@
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [200, 400],
+      "position": [
+        200,
+        400
+      ],
       "parameters": {
-        "rule": { "interval": [{ "field": "days" }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "days"
+            }
+          ]
+        }
       }
     },
     {
@@ -17,7 +26,10 @@
       "name": "Request Preferences Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 400],
+      "position": [
+        420,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -29,10 +41,17 @@
       "name": "Call WF-L0",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [640, 400],
+      "position": [
+        640,
+        400
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "8e45da373fd94a90", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -41,7 +60,10 @@
       "name": "Fetch Cutshort Sitemap",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [860, 260],
+      "position": [
+        860,
+        260
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -50,7 +72,11 @@
         "dataPropertyName": "data",
         "jsonParameters": true,
         "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job collection)\"}",
-        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 30000 }
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 30000
+        }
       }
     },
     {
@@ -58,7 +84,10 @@
       "name": "Parse Cutshort Sitemap",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1080, 260],
+      "position": [
+        1080,
+        260
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -70,7 +99,10 @@
       "name": "Fetch Hirist Sitemap",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [860, 540],
+      "position": [
+        860,
+        540
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -79,7 +111,11 @@
         "dataPropertyName": "data",
         "jsonParameters": true,
         "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job collection)\", \"Accept-Encoding\": \"gzip\"}",
-        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 30000 }
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 30000
+        }
       }
     },
     {
@@ -87,7 +123,10 @@
       "name": "Parse Hirist Sitemap",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1080, 540],
+      "position": [
+        1080,
+        540
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -99,15 +138,24 @@
       "name": "Merge Sitemaps",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.2,
-      "position": [1300, 400],
-      "parameters": { "mode": "append", "numberInputs": 2 }
+      "position": [
+        1300,
+        400
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      }
     },
     {
       "id": "f1a1b1c1-0001-4000-8000-000000000009",
       "name": "Slug Keyword Prefilter",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1520, 400],
+      "position": [
+        1520,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -119,20 +167,33 @@
       "name": "Filter Already Collected",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [1740, 400],
+      "position": [
+        1740,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "SELECT $1::text AS source, $2::text AS url WHERE NOT EXISTS (SELECT 1 FROM postings WHERE apply_url = $2)",
-        "additionalFields": { "queryParams": "source,url" }
+        "additionalFields": {
+          "queryParams": "source,url"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "f1a1b1c1-0001-4000-8000-00000000000b",
       "name": "Fetch Job Page",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
-      "position": [1960, 400],
+      "position": [
+        1960,
+        400
+      ],
       "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
@@ -141,7 +202,11 @@
         "dataPropertyName": "data",
         "jsonParameters": true,
         "headerParametersJson": "={\"User-Agent\": \"PlacementPilotBot/1.0 (+job collection)\"}",
-        "options": { "fullResponse": true, "ignoreResponseCode": true, "timeout": 15000 }
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 15000
+        }
       }
     },
     {
@@ -149,7 +214,10 @@
       "name": "Wait Between Fetches",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [2180, 400],
+      "position": [
+        2180,
+        400
+      ],
       "webhookId": "b3f1e2d4-0001-4000-8000-00000000000c",
       "parameters": {
         "amount": "={{ $('Filter Already Collected').item.json.source === 'hirist' ? 10 : 1 }}",
@@ -161,7 +229,10 @@
       "name": "Strip HTML For LLM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 400],
+      "position": [
+        2400,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -173,11 +244,17 @@
       "name": "Extract Job Details",
       "type": "@n8n/n8n-nodes-langchain.anthropic",
       "typeVersion": 1,
-      "position": [2620, 400],
+      "position": [
+        2620,
+        400
+      ],
       "parameters": {
         "resource": "text",
         "operation": "message",
-        "modelId": { "mode": "id", "value": "claude-haiku-4-5-20251001" },
+        "modelId": {
+          "mode": "id",
+          "value": "claude-haiku-4-5-20251001"
+        },
         "messages": {
           "values": [
             {
@@ -193,14 +270,22 @@
           "temperature": 0
         }
       },
-      "credentials": { "anthropicApi": { "id": "QLxm16bJPwDvuMtl", "name": "Anthropic account" } }
+      "credentials": {
+        "anthropicApi": {
+          "id": "QLxm16bJPwDvuMtl",
+          "name": "Anthropic account"
+        }
+      }
     },
     {
       "id": "f1a1b1c1-0001-4000-8000-00000000000f",
       "name": "Validate Extraction",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2840, 400],
+      "position": [
+        2840,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
@@ -212,12 +297,26 @@
       "name": "Keep Valid Extractions",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [3060, 400],
+      "position": [
+        3060,
+        400
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
-            { "leftValue": "={{ $json.skip }}", "rightValue": true, "operator": { "type": "boolean", "operation": "notEquals" } }
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
           ],
           "combinator": "and"
         }
@@ -228,10 +327,17 @@
       "name": "Call WF-L1",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [3280, 400],
+      "position": [
+        3280,
+        400
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "773d1f4a0f6b4bf7", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "773d1f4a0f6b4bf7",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -240,20 +346,33 @@
       "name": "Dedup Upsert",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [3500, 400],
+      "position": [
+        3500,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, source_id, (xmax = 0) AS was_inserted",
-        "additionalFields": { "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date" }
+        "additionalFields": {
+          "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     },
     {
       "id": "f1a1b1c1-0001-4000-8000-000000000013",
       "name": "Build Score Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3500, 620],
+      "position": [
+        3500,
+        620
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -265,10 +384,17 @@
       "name": "Call WF-2",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [3720, 620],
+      "position": [
+        3720,
+        620
+      ],
       "parameters": {
         "source": "database",
-        "workflowId": { "__rl": true, "value": "c4f8a29d1e6b3075", "mode": "id" },
+        "workflowId": {
+          "__rl": true,
+          "value": "c4f8a29d1e6b3075",
+          "mode": "id"
+        },
         "mode": "once"
       }
     },
@@ -277,7 +403,10 @@
       "name": "Tally",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3720, 400],
+      "position": [
+        3720,
+        400
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -289,46 +418,256 @@
       "name": "Write Run",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
-      "position": [3940, 400],
+      "position": [
+        3940,
+        400
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, started_at, finished_at, fetched, new_count, prefiltered) VALUES ('WF-1c', now(), now(), $1, $2, $3) RETURNING id",
-        "additionalFields": { "queryParams": "fetched,new_count,candidates" }
+        "additionalFields": {
+          "queryParams": "fetched,new_count,candidates"
+        }
       },
-      "credentials": { "postgres": { "id": "pp-local-postgres", "name": "Local Postgres" } }
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
     }
   ],
   "connections": {
-    "Schedule Trigger": { "main": [[{ "node": "Request Preferences Config", "type": "main", "index": 0 }]] },
-    "Request Preferences Config": { "main": [[{ "node": "Call WF-L0", "type": "main", "index": 0 }]] },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Request Preferences Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Preferences Config": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Call WF-L0": {
-      "main": [[
-        { "node": "Fetch Cutshort Sitemap", "type": "main", "index": 0 },
-        { "node": "Fetch Hirist Sitemap", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Fetch Cutshort Sitemap",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Hirist Sitemap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Fetch Cutshort Sitemap": { "main": [[{ "node": "Parse Cutshort Sitemap", "type": "main", "index": 0 }]] },
-    "Parse Cutshort Sitemap": { "main": [[{ "node": "Merge Sitemaps", "type": "main", "index": 0 }]] },
-    "Fetch Hirist Sitemap": { "main": [[{ "node": "Parse Hirist Sitemap", "type": "main", "index": 0 }]] },
-    "Parse Hirist Sitemap": { "main": [[{ "node": "Merge Sitemaps", "type": "main", "index": 1 }]] },
-    "Merge Sitemaps": { "main": [[{ "node": "Slug Keyword Prefilter", "type": "main", "index": 0 }]] },
-    "Slug Keyword Prefilter": { "main": [[{ "node": "Filter Already Collected", "type": "main", "index": 0 }]] },
-    "Filter Already Collected": { "main": [[{ "node": "Fetch Job Page", "type": "main", "index": 0 }]] },
-    "Fetch Job Page": { "main": [[{ "node": "Wait Between Fetches", "type": "main", "index": 0 }]] },
-    "Wait Between Fetches": { "main": [[{ "node": "Strip HTML For LLM", "type": "main", "index": 0 }]] },
-    "Strip HTML For LLM": { "main": [[{ "node": "Extract Job Details", "type": "main", "index": 0 }]] },
-    "Extract Job Details": { "main": [[{ "node": "Validate Extraction", "type": "main", "index": 0 }]] },
-    "Validate Extraction": { "main": [[{ "node": "Keep Valid Extractions", "type": "main", "index": 0 }]] },
-    "Keep Valid Extractions": { "main": [[{ "node": "Call WF-L1", "type": "main", "index": 0 }]] },
-    "Call WF-L1": { "main": [[{ "node": "Dedup Upsert", "type": "main", "index": 0 }]] },
+    "Fetch Cutshort Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Parse Cutshort Sitemap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Cutshort Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Merge Sitemaps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Hirist Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Parse Hirist Sitemap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Hirist Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Merge Sitemaps",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Sitemaps": {
+      "main": [
+        [
+          {
+            "node": "Slug Keyword Prefilter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slug Keyword Prefilter": {
+      "main": [
+        [
+          {
+            "node": "Filter Already Collected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Already Collected": {
+      "main": [
+        [
+          {
+            "node": "Fetch Job Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Job Page": {
+      "main": [
+        [
+          {
+            "node": "Wait Between Fetches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Between Fetches": {
+      "main": [
+        [
+          {
+            "node": "Strip HTML For LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip HTML For LLM": {
+      "main": [
+        [
+          {
+            "node": "Extract Job Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Job Details": {
+      "main": [
+        [
+          {
+            "node": "Validate Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Extraction": {
+      "main": [
+        [
+          {
+            "node": "Keep Valid Extractions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Valid Extractions": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call WF-L1": {
+      "main": [
+        [
+          {
+            "node": "Dedup Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Dedup Upsert": {
-      "main": [[
-        { "node": "Tally", "type": "main", "index": 0 },
-        { "node": "Build Score Payload", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Tally",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Score Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Build Score Payload": { "main": [[{ "node": "Call WF-2", "type": "main", "index": 0 }]] },
-    "Tally": { "main": [[{ "node": "Write Run", "type": "main", "index": 0 }]] }
+    "Build Score Payload": {
+      "main": [
+        [
+          {
+            "node": "Call WF-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tally": {
+      "main": [
+        [
+          {
+            "node": "Write Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
   "settings": {

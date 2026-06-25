@@ -78,15 +78,22 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 ## Current state
 
-*Rewritten in place each session. Last updated: 2026-08-15.*
+*Rewritten in place each session. Last updated: 2026-08-20.*
 
-**Phase 2, 3 (core), 4, and 8 all complete.** WF-1d, WF-1c, WF-1b (all three aggregators — SerpApi,
-JSearch, Careerjet), and now WF-4 gmail are all built and verified live. Phase 5 was explicitly skipped
-for now (needs a Cloudflare Tunnel, owner's call to set up). Phase 6 and 7 remain deliberately gated —
-Phase 6 needs a real near-duplicate corpus, Phase 7 needs ~200 labeled postings — neither exists yet, so
-neither is built. Next open items: Phase 9 (spend cap, forkability polish), Phase 5 if the owner wants the
-tunnel set up, or activating any of the five built-but-dormant workflows (WF-1, WF-1b, WF-1c, WF-1d, WF-4)
-— all the owner's call.
+**Phase 2, 3, 4, and 8 all complete. Phase 6 declined by the owner — not being built.** WF-1d, WF-1c,
+WF-1b (SerpApi + JSearch + Careerjet), and WF-4 gmail are all built and verified live. Match criteria
+retuned 2026-08-20 to the owner's explicit spec (fresher/2027-batch, full-time-or-PPO-internship-only,
+real compensation floors) and verified against 5 synthetic test cases, all scored correctly. A real,
+previously-unverified reliability gap was found and fixed the same day: WF-L0's fallback-to-cache
+guarantee never actually covered a genuine connection-level failure (DNS/TLS/refused), only HTTP-level
+ones — see `DECISIONS.md`. A weekly workflow-export/drift-check tool (`scripts/sync_workflows.py` +
+`.ps1`) now exists and was run for real, correcting 11 files' worth of drift between the hand-authored
+JSON and what n8n's own canonicalization actually produces (key reordering, default-value omission — no
+logic changes, verified node-for-node). Phase 5 (Discord interactions) is in progress — the owner asked
+to proceed; see the Cloudflare Tunnel guidance below/in session log. Phase 7 remains gated on ~200 labeled
+postings (owner intends to provide 10-20 examples to bootstrap this — not yet received). Phase 9 (spend
+cap, forkability polish) and activating any of the five built-but-dormant workflows remain open, the
+owner's call.
 
 | Item | State |
 |---|---|
@@ -245,7 +252,13 @@ Unfinished items are never deleted. New work is added here.
 - [x] Config-fetch failure alarm — WF-L0's `fallback_alarm` outcome now calls WF-5 explicitly via a
       parallel branch (doesn't block the caller from getting cached data back). Verified live with a
       seeded fake cache row for a nonexistent file: real Discord alarm landed, caller still succeeded.
-- [ ] Weekly workflow export to git via n8n REST API
+- [x] Weekly workflow export to git — `scripts/sync_workflows.py` (n8n CLI `export:workflow --backup`,
+      allow-listed to the exact fields hand-authored files use, diffs against each of the 11 tracked
+      workflows, only rewrites on real drift) + `scripts/sync_workflows.ps1` (commits/pushes if drift is
+      found). Run for real: found genuine drift (n8n's own canonicalization — key order, default-value
+      omission — never previously applied to any hand-edited file), corrected all 11, verified node sets
+      and connections identical before/after. Not yet scheduled as a recurring task — owner's call whether
+      to register it in Windows Task Scheduler; can also just be run manually.
 - [ ] Chaos test: dead token mid-run recovers unattended
 
 ### Phase 4 — Ingestion breadth
@@ -301,10 +314,13 @@ Unfinished items are never deleted. New work is added here.
 - [ ] WF-3b inbound — Ed25519 verification (import-free), PING response, status update
 - [ ] `[Applied] [Not interested] [Details]` buttons; edit message in place
 
-### Phase 6 — Near-duplicate detection *(gated: needs corpus)*
-- [ ] `pg_trgm` similarity scoped per normalized company
-- [ ] Hand-label 50 pairs, sweep threshold, pick max-F1, commit the curve
-- [ ] `canonical_id` + prefer direct-ATS `apply_url`
+### Phase 6 — Near-duplicate detection — **declined by the owner, 2026-08-20. Not being built.**
+- [ ] ~~`pg_trgm` similarity scoped per normalized company~~ — declined, see `DECISIONS.md` 2026-08-20
+- [ ] ~~Hand-label 50 pairs, sweep threshold, pick max-F1, commit the curve~~ — declined
+- [ ] ~~`canonical_id` + prefer direct-ATS `apply_url`~~ — declined
+  (Exact-duplicate detection is unaffected — WF-L1's hash-based key still runs unconditionally in every
+  collector. Only this fuzzy near-duplicate layer is dropped. `postings_norm_company_trgm_idx` stays;
+  it's load-bearing for WF-4's Gmail fuzzy-company-match, a separate feature.)
 
 ### Phase 7 — Evaluation and tuning *(gated: ~200 postings)*
 - [ ] Label 200 postings, 120 train / 80 held-out

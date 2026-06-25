@@ -3,83 +3,69 @@
   "name": "WF-1 collect-ats",
   "nodes": [
     {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
       "id": "86139246-7390-4d0f-9c0c-60777d4e8984",
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        200,
-        500
-      ],
-      "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "hours",
-              "hoursInterval": 1
-            }
-          ]
-        }
-      }
+        208,
+        512
+      ]
     },
     {
+      "parameters": {
+        "jsCode": "return [{ json: { file: 'sources.json' } }];"
+      },
       "id": "dc6ed0ac-3e2b-450e-ab8f-a4b27476528e",
       "name": "Request Sources Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        420,
-        500
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "return [{ json: { file: 'sources.json' } }];"
-      }
+        432,
+        512
+      ]
     },
     {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "8e45da373fd94a90",
+          "mode": "id"
+        },
+        "options": {}
+      },
       "id": "633668a0-48fb-4c0b-8e27-5d7f724d1160",
       "name": "Call WF-L0",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         640,
-        500
-      ],
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "8e45da373fd94a90",
-          "mode": "id"
-        },
-        "mode": "once"
-      }
+        512
+      ]
     },
     {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst config = result.config || {};\nconst entries = config.ats || [];\n\nreturn entries.map(e => ({\n  json: {\n    id: e.provider + ':' + e.token,\n    provider: e.provider,\n    token: e.token,\n    company: e.company\n  }\n}));"
+      },
       "id": "33d9429d-998e-4a8d-af2e-18fcfdde1b99",
       "name": "Extract ATS Entries",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        860,
-        500
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "const result = $input.first().json;\nconst config = result.config || {};\nconst entries = config.ats || [];\n\nreturn entries.map(e => ({\n  json: {\n    id: e.provider + ':' + e.token,\n    provider: e.provider,\n    token: e.token,\n    company: e.company\n  }\n}));"
-      }
+        864,
+        512
+      ]
     },
     {
-      "id": "d058472a-529b-4f65-a7ea-2e3f694e9e30",
-      "name": "Sync Sources",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [
-        1080,
-        500
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO sources (id, kind, provider, company, config, poll_tier, origin, active) VALUES ($1, 'ats', $2, $3, jsonb_build_object('token', $4), 'hourly', 'manual', true) ON CONFLICT (id) DO UPDATE SET company = EXCLUDED.company, config = EXCLUDED.config, active = true RETURNING id",
@@ -87,6 +73,14 @@
           "queryParams": "id,provider,company,token"
         }
       },
+      "id": "d058472a-529b-4f65-a7ea-2e3f694e9e30",
+      "name": "Sync Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        512
+      ],
       "credentials": {
         "postgres": {
           "id": "pp-local-postgres",
@@ -95,33 +89,32 @@
       }
     },
     {
+      "parameters": {
+        "jsCode": "return [{ json: {} }];"
+      },
       "id": "9c1e2f3a-1111-4b2c-8d3e-abcdef012345",
       "name": "Collapse To Single Trigger",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1190,
-        500
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "return [{ json: {} }];"
-      }
+        1200,
+        512
+      ]
     },
     {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, provider, company, config->>'token' AS token FROM sources WHERE kind = 'ats' AND active = true ORDER BY id",
+        "additionalFields": {}
+      },
       "id": "501b870e-2ba9-4917-9d3a-5f4dff4d5971",
       "name": "Get Active ATS Sources",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 1,
       "position": [
-        1300,
-        500
+        1312,
+        512
       ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, provider, company, config->>'token' AS token FROM sources WHERE kind = 'ats' AND active = true ORDER BY id"
-      },
       "credentials": {
         "postgres": {
           "id": "pp-local-postgres",
@@ -130,233 +123,209 @@
       }
     },
     {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.provider }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "greenhouse"
+            },
+            {
+              "value2": "lever",
+              "output": 1
+            },
+            {
+              "value2": "ashby",
+              "output": 2
+            }
+          ]
+        }
+      },
       "id": "c7e4320d-d4fd-4a81-aaf7-f8834214ff5b",
       "name": "By Provider",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 1,
       "position": [
         1520,
-        500
-      ],
-      "parameters": {
-        "mode": "rules",
-        "dataType": "string",
-        "value1": "={{ $json.provider }}",
-        "rules": {
-          "rules": [
-            {
-              "operation": "equal",
-              "value2": "greenhouse",
-              "output": 0
-            },
-            {
-              "operation": "equal",
-              "value2": "lever",
-              "output": 1
-            },
-            {
-              "operation": "equal",
-              "value2": "ashby",
-              "output": 2
-            }
-          ]
-        },
-        "fallbackOutput": -1
-      }
+        512
+      ]
     },
     {
+      "parameters": {
+        "url": "=https://boards-api.greenhouse.io/v1/boards/{{ $json.token }}/jobs?content=true",
+        "responseFormat": "string",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 15000
+        }
+      },
       "id": "d72162da-e14c-4221-9e01-809d54c298c0",
       "name": "Fetch Greenhouse",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [
-        1740,
-        260
+        1744,
+        272
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000,
-      "continueOnFail": true,
-      "parameters": {
-        "requestMethod": "GET",
-        "url": "=https://boards-api.greenhouse.io/v1/boards/{{ $json.token }}/jobs?content=true",
-        "responseFormat": "string",
-        "dataPropertyName": "data",
-        "jsonParameters": true,
-        "options": {
-          "fullResponse": true,
-          "ignoreResponseCode": true,
-          "timeout": 15000
-        }
-      }
+      "continueOnFail": true
     },
     {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function stripHtml(html) {\n  if (!html) return '';\n  let s = html;\n  s = s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n  s = s.replace(/<[^>]+>/g, ' ');\n  s = s.replace(/&nbsp;/g, ' ');\n  return s.replace(/\\s+/g, ' ').trim();\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'greenhouse', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet data;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'greenhouse', fetch_failed: true, parse_error: true, postings: [] } };\n}\n\nconst jobs = data.jobs || [];\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.title,\n  location: (j.location && j.location.name) || null,\n  employment_type: null,\n  apply_url: j.absolute_url,\n  source: 'greenhouse',\n  source_id: source.id,\n  description: stripHtml(j.content),\n  posted_date: j.updated_at || null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'greenhouse', postings } };\n"
+      },
       "id": "f3a42047-a931-4841-92d6-8afad606a15c",
       "name": "Parse Greenhouse",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1960,
-        260
-      ],
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "language": "javaScript",
-        "jsCode": "function stripHtml(html) {\n  if (!html) return '';\n  let s = html;\n  s = s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&amp;/g, '&');\n  s = s.replace(/<[^>]+>/g, ' ');\n  s = s.replace(/&nbsp;/g, ' ');\n  return s.replace(/\\s+/g, ' ').trim();\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'greenhouse', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet data;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'greenhouse', fetch_failed: true, parse_error: true, postings: [] } };\n}\n\nconst jobs = data.jobs || [];\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.title,\n  location: (j.location && j.location.name) || null,\n  employment_type: null,\n  apply_url: j.absolute_url,\n  source: 'greenhouse',\n  source_id: source.id,\n  description: stripHtml(j.content),\n  posted_date: j.updated_at || null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'greenhouse', postings } };\n"
-      }
+        1968,
+        272
+      ]
     },
     {
+      "parameters": {
+        "fieldToSplitOut": "postings",
+        "options": {}
+      },
       "id": "c7aa8708-fd55-4a56-a74f-543227eb32c8",
       "name": "Split Greenhouse Postings",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        2180,
-        260
-      ],
-      "parameters": {
-        "fieldToSplitOut": "postings",
-        "include": "noOtherFields"
-      }
+        2192,
+        272
+      ]
     },
     {
+      "parameters": {
+        "url": "=https://api.lever.co/v0/postings/{{ $json.token }}?mode=json",
+        "responseFormat": "string",
+        "jsonParameters": true,
+        "options": {
+          "fullResponse": true,
+          "ignoreResponseCode": true,
+          "timeout": 15000
+        }
+      },
       "id": "82e910e3-bd5d-4aa9-99f0-7e52acebae4b",
       "name": "Fetch Lever",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 1,
       "position": [
-        1740,
-        500
+        1744,
+        512
       ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000,
-      "continueOnFail": true,
-      "parameters": {
-        "requestMethod": "GET",
-        "url": "=https://api.lever.co/v0/postings/{{ $json.token }}?mode=json",
-        "responseFormat": "string",
-        "dataPropertyName": "data",
-        "jsonParameters": true,
-        "options": {
-          "fullResponse": true,
-          "ignoreResponseCode": true,
-          "timeout": 15000
-        }
-      }
+      "continueOnFail": true
     },
     {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function mapCommitment(c) {\n  if (!c) return null;\n  const s = c.toLowerCase();\n  if (s.includes('intern')) return 'internship';\n  if (s.includes('full')) return 'full_time';\n  if (s.includes('part')) return 'part_time';\n  if (s.includes('contract')) return 'contract';\n  return s.replace(/\\s+/g, '_');\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'lever', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet jobs;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  jobs = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'lever', fetch_failed: true, parse_error: true, postings: [] } };\n}\nif (!Array.isArray(jobs)) jobs = [];\n\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.text,\n  location: (j.categories && j.categories.location) || null,\n  employment_type: mapCommitment(j.categories && j.categories.commitment),\n  apply_url: j.hostedUrl || j.applyUrl,\n  source: 'lever',\n  source_id: source.id,\n  description: (j.descriptionPlain || '').replace(/\\s+/g, ' ').trim(),\n  posted_date: j.createdAt ? new Date(j.createdAt).toISOString() : null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'lever', postings } };\n"
+      },
       "id": "1b123316-423e-4981-bab7-61a2c8352f92",
       "name": "Parse Lever",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1960,
-        500
-      ],
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "language": "javaScript",
-        "jsCode": "function mapCommitment(c) {\n  if (!c) return null;\n  const s = c.toLowerCase();\n  if (s.includes('intern')) return 'internship';\n  if (s.includes('full')) return 'full_time';\n  if (s.includes('part')) return 'part_time';\n  if (s.includes('contract')) return 'contract';\n  return s.replace(/\\s+/g, '_');\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'lever', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet jobs;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  jobs = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'lever', fetch_failed: true, parse_error: true, postings: [] } };\n}\nif (!Array.isArray(jobs)) jobs = [];\n\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.text,\n  location: (j.categories && j.categories.location) || null,\n  employment_type: mapCommitment(j.categories && j.categories.commitment),\n  apply_url: j.hostedUrl || j.applyUrl,\n  source: 'lever',\n  source_id: source.id,\n  description: (j.descriptionPlain || '').replace(/\\s+/g, ' ').trim(),\n  posted_date: j.createdAt ? new Date(j.createdAt).toISOString() : null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'lever', postings } };\n"
-      }
+        1968,
+        512
+      ]
     },
     {
+      "parameters": {
+        "fieldToSplitOut": "postings",
+        "options": {}
+      },
       "id": "ff9b0246-1d3e-4fe2-b138-a29dfd9e955a",
       "name": "Split Lever Postings",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        2180,
-        500
-      ],
-      "parameters": {
-        "fieldToSplitOut": "postings",
-        "include": "noOtherFields"
-      }
+        2192,
+        512
+      ]
     },
     {
-      "id": "e332da2f-f818-416d-9346-894ea66de043",
-      "name": "Fetch Ashby",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [
-        1740,
-        740
-      ],
-      "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 2000,
-      "continueOnFail": true,
       "parameters": {
-        "requestMethod": "GET",
         "url": "=https://api.ashbyhq.com/posting-api/job-board/{{ $json.token }}",
         "responseFormat": "string",
-        "dataPropertyName": "data",
         "jsonParameters": true,
         "options": {
           "fullResponse": true,
           "ignoreResponseCode": true,
           "timeout": 15000
         }
-      }
+      },
+      "id": "e332da2f-f818-416d-9346-894ea66de043",
+      "name": "Fetch Ashby",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1744,
+        752
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true
     },
     {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function mapEmploymentType(t) {\n  if (!t) return null;\n  const map = { FullTime: 'full_time', PartTime: 'part_time', Intern: 'internship', Contract: 'contract', Temporary: 'contract' };\n  return map[t] || t.toLowerCase();\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'ashby', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet data;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'ashby', fetch_failed: true, parse_error: true, postings: [] } };\n}\n\nconst jobs = data.jobs || [];\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.title,\n  location: j.location || null,\n  employment_type: mapEmploymentType(j.employmentType),\n  apply_url: j.jobUrl || j.applyUrl,\n  source: 'ashby',\n  source_id: source.id,\n  description: (j.descriptionPlain || '').replace(/\\s+/g, ' ').trim(),\n  posted_date: j.publishedAt || null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'ashby', postings } };\n"
+      },
       "id": "8acef31f-70a0-44e0-a290-ef6df770e0c2",
       "name": "Parse Ashby",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1960,
-        740
-      ],
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "language": "javaScript",
-        "jsCode": "function mapEmploymentType(t) {\n  if (!t) return null;\n  const map = { FullTime: 'full_time', PartTime: 'part_time', Intern: 'internship', Contract: 'contract', Temporary: 'contract' };\n  return map[t] || t.toLowerCase();\n}\n\nconst source = $('Get Active ATS Sources').item.json;\nconst resp = $input.item.json;\n\nif (resp.statusCode !== 200) {\n  return { json: { source_id: source.id, company: source.company, provider: 'ashby', fetch_failed: true, statusCode: resp.statusCode, postings: [] } };\n}\n\nlet data;\ntry {\n  const raw = resp.body !== undefined ? resp.body : resp.data;\n  data = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  return { json: { source_id: source.id, company: source.company, provider: 'ashby', fetch_failed: true, parse_error: true, postings: [] } };\n}\n\nconst jobs = data.jobs || [];\nconst postings = jobs.map(j => ({\n  company: source.company,\n  role: j.title,\n  location: j.location || null,\n  employment_type: mapEmploymentType(j.employmentType),\n  apply_url: j.jobUrl || j.applyUrl,\n  source: 'ashby',\n  source_id: source.id,\n  description: (j.descriptionPlain || '').replace(/\\s+/g, ' ').trim(),\n  posted_date: j.publishedAt || null\n}));\n\nreturn { json: { source_id: source.id, company: source.company, provider: 'ashby', postings } };\n"
-      }
+        1968,
+        752
+      ]
     },
     {
+      "parameters": {
+        "fieldToSplitOut": "postings",
+        "options": {}
+      },
       "id": "c7858cf5-a5e4-4fbb-bc6e-000c2adaddb4",
       "name": "Split Ashby Postings",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        2180,
-        740
-      ],
-      "parameters": {
-        "fieldToSplitOut": "postings",
-        "include": "noOtherFields"
-      }
+        2192,
+        752
+      ]
     },
     {
-      "id": "5bb01493-09fe-411b-84eb-df173e445eaa",
-      "name": "Call WF-L1",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        2420,
-        500
-      ],
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "value": "773d1f4a0f6b4bf7",
           "mode": "id"
         },
-        "mode": "once"
-      }
+        "options": {}
+      },
+      "id": "5bb01493-09fe-411b-84eb-df173e445eaa",
+      "name": "Call WF-L1",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2432,
+        512
+      ]
     },
     {
-      "id": "3b9cf67d-76f1-4e43-b1f1-cc2c90adc233",
-      "name": "Dedup Upsert",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [
-        2640,
-        500
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO postings (id, content_hash, source_id, company, role, location, employment_type, apply_url, source, description, norm_company, norm_description, posted_date, first_seen, last_seen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), now()) ON CONFLICT (id) DO UPDATE SET last_seen = now() RETURNING id, source_id, (xmax = 0) AS was_inserted",
@@ -364,6 +333,14 @@
           "queryParams": "id,content_hash,source_id,company,role,location,employment_type,apply_url,source,description,norm_company,norm_description,posted_date"
         }
       },
+      "id": "3b9cf67d-76f1-4e43-b1f1-cc2c90adc233",
+      "name": "Dedup Upsert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        2640,
+        512
+      ],
       "credentials": {
         "postgres": {
           "id": "pp-local-postgres",
@@ -372,6 +349,9 @@
       }
     },
     {
+      "parameters": {
+        "jsCode": "const dedupOutputs = $input.all();\nconst originals = $('Call WF-L1').all();\nconst toScore = [];\nfor (let i = 0; i < dedupOutputs.length; i++) {\n  if (dedupOutputs[i].json.was_inserted === true) {\n    toScore.push({ json: originals[i].json });\n  }\n}\nreturn toScore;"
+      },
       "id": "7c1d2e3f-4444-4a55-8b66-777788889999",
       "name": "Build Score Payload",
       "type": "n8n-nodes-base.code",
@@ -379,56 +359,48 @@
       "position": [
         2640,
         720
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "const dedupOutputs = $input.all();\nconst originals = $('Call WF-L1').all();\nconst toScore = [];\nfor (let i = 0; i < dedupOutputs.length; i++) {\n  if (dedupOutputs[i].json.was_inserted === true) {\n    toScore.push({ json: originals[i].json });\n  }\n}\nreturn toScore;"
-      }
+      ]
     },
     {
-      "id": "8d2e3f40-5555-4b66-9c77-88889999aaaa",
-      "name": "Call WF-2",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        2860,
-        720
-      ],
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
           "value": "c4f8a29d1e6b3075",
           "mode": "id"
         },
-        "mode": "once"
-      }
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "8d2e3f40-5555-4b66-9c77-88889999aaaa",
+      "name": "Call WF-2",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2864,
+        720
+      ]
     },
     {
+      "parameters": {
+        "jsCode": "// Seed one entry per source that was actually queried this run, so a\n// provider returning zero postings (empty result OR fetch failure) still\n// gets a runs row instead of silently vanishing (Phase 3 zero-result gap).\nconst sources = $('Get Active ATS Sources').all().map(i => i.json);\nconst bySource = new Map();\nfor (const s of sources) {\n  bySource.set(s.id, { source_id: s.id, provider: s.provider, fetched: 0, new_count: 0 });\n}\n\nfor (const item of $input.all()) {\n  const sid = item.json.source_id;\n  if (!bySource.has(sid)) {\n    bySource.set(sid, { source_id: sid, provider: 'unknown', fetched: 0, new_count: 0 });\n  }\n  const agg = bySource.get(sid);\n  agg.fetched += 1;\n  if (item.json.was_inserted === true) agg.new_count += 1;\n}\n\nreturn Array.from(bySource.values()).map(v => ({\n  json: { ...v, deduped: v.fetched - v.new_count }\n}));"
+      },
       "id": "6a5b613d-afae-4604-9c6d-9425f7839398",
       "name": "Aggregate Per Source",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2860,
-        500
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Seed one entry per source that was actually queried this run, so a\n// provider returning zero postings (empty result OR fetch failure) still\n// gets a runs row instead of silently vanishing (Phase 3 zero-result gap).\nconst sources = $('Get Active ATS Sources').all().map(i => i.json);\nconst bySource = new Map();\nfor (const s of sources) {\n  bySource.set(s.id, { source_id: s.id, provider: s.provider, fetched: 0, new_count: 0 });\n}\n\nfor (const item of $input.all()) {\n  const sid = item.json.source_id;\n  if (!bySource.has(sid)) {\n    bySource.set(sid, { source_id: sid, provider: 'unknown', fetched: 0, new_count: 0 });\n  }\n  const agg = bySource.get(sid);\n  agg.fetched += 1;\n  if (item.json.was_inserted === true) agg.new_count += 1;\n}\n\nreturn Array.from(bySource.values()).map(v => ({\n  json: { ...v, deduped: v.fetched - v.new_count }\n}));"
-      }
+        2864,
+        512
+      ]
     },
     {
-      "id": "42d0a1fd-eacb-4821-87a0-b56621135b94",
-      "name": "Write Run",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [
-        3080,
-        400
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO runs (workflow, source_id, started_at, finished_at, fetched, new_count, deduped) VALUES ('WF-1', $1, now(), now(), $2, $3, $4) RETURNING id",
@@ -436,6 +408,14 @@
           "queryParams": "source_id,fetched,new_count,deduped"
         }
       },
+      "id": "42d0a1fd-eacb-4821-87a0-b56621135b94",
+      "name": "Write Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        3088,
+        400
+      ],
       "credentials": {
         "postgres": {
           "id": "pp-local-postgres",
@@ -444,14 +424,6 @@
       }
     },
     {
-      "id": "b1c2d3e4-6666-4c77-ad88-99990000aaaa",
-      "name": "Update Source Zero-Streak",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 1,
-      "position": [
-        3080,
-        620
-      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "UPDATE sources SET consecutive_zero = CASE WHEN $2::int = 0 THEN consecutive_zero + 1 ELSE 0 END, last_ok_at = CASE WHEN $2::int > 0 THEN now() ELSE last_ok_at END WHERE id = $1 RETURNING id AS source_id, consecutive_zero, $3::text AS provider",
@@ -459,6 +431,14 @@
           "queryParams": "source_id,fetched,provider"
         }
       },
+      "id": "b1c2d3e4-6666-4c77-ad88-99990000aaaa",
+      "name": "Update Source Zero-Streak",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        3088,
+        624
+      ],
       "credentials": {
         "postgres": {
           "id": "pp-local-postgres",
@@ -467,19 +447,17 @@
       }
     },
     {
+      "parameters": {
+        "jsCode": "// Runs after every run/streak row is already committed, so an alarm here\n// never blocks the writes that already happened -- matches WF-0's pattern\n// of throwing only after Write Run has succeeded.\nconst offenders = $input.all()\n  .map(i => i.json)\n  .filter(s => s.consecutive_zero >= 2);\n\nif (offenders.length > 0) {\n  const detail = offenders\n    .map(s => `${s.source_id} (${s.provider}): ${s.consecutive_zero} consecutive zero-result runs`)\n    .join('; ');\n  throw new Error('WF-1: source(s) returned zero postings 2+ runs in a row: ' + detail);\n}\n\nreturn [{ json: { ok: true } }];"
+      },
       "id": "c2d3e4f5-7777-4d88-be99-0000aaaabbbb",
       "name": "Check Zero Alarm",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3300,
-        620
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Runs after every run/streak row is already committed, so an alarm here\n// never blocks the writes that already happened -- matches WF-0's pattern\n// of throwing only after Write Run has succeeded.\nconst offenders = $input.all()\n  .map(i => i.json)\n  .filter(s => s.consecutive_zero >= 2);\n\nif (offenders.length > 0) {\n  const detail = offenders\n    .map(s => `${s.source_id} (${s.provider}): ${s.consecutive_zero} consecutive zero-result runs`)\n    .join('; ');\n  throw new Error('WF-1: source(s) returned zero postings 2+ runs in a row: ' + detail);\n}\n\nreturn [{ json: { ok: true } }];"
-      }
+        3312,
+        624
+      ]
     }
   ],
   "connections": {
@@ -753,7 +731,8 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "errorWorkflow": "5e11a1a2b3c4d5e6"
+    "errorWorkflow": "5e11a1a2b3c4d5e6",
+    "binaryMode": "separate"
   },
   "pinData": {}
 }

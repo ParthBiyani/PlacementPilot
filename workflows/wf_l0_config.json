@@ -47,6 +47,10 @@
         660,
         300
       ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true,
       "parameters": {
         "requestMethod": "GET",
         "url": "={{ $env.PP_CONFIG_BASE_URL }}/{{ $json.file }}",
@@ -57,7 +61,7 @@
         "options": {
           "fullResponse": true,
           "ignoreResponseCode": true,
-          "timeout": 10000
+          "timeout": 30000
         }
       }
     },
