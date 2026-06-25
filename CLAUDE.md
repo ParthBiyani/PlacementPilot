@@ -80,7 +80,8 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 *Rewritten in place each session. Last updated: 2026-08-20.*
 
-**Phase 2, 3, 4, and 8 all complete. Phase 6 declined by the owner — not being built.** WF-1d, WF-1c,
+**Phase 2, 3 (now fully complete, including both leftovers), 4, and 8 all complete. Phase 6 declined by
+the owner — not being built.** WF-1d, WF-1c,
 WF-1b (SerpApi + JSearch + Careerjet), and WF-4 gmail are all built and verified live. Match criteria
 retuned 2026-08-20 to the owner's explicit spec (fresher/2027-batch, full-time-or-PPO-internship-only,
 real compensation floors) and verified against 5 synthetic test cases, all scored correctly. A real,
@@ -259,7 +260,12 @@ Unfinished items are never deleted. New work is added here.
       omission — never previously applied to any hand-edited file), corrected all 11, verified node sets
       and connections identical before/after. Not yet scheduled as a recurring task — owner's call whether
       to register it in Windows Task Scheduler; can also just be run manually.
-- [ ] Chaos test: dead token mid-run recovers unattended
+- [x] Chaos test: dead token mid-run recovers unattended — verified live against real ATS traffic (17
+      boards, one deliberately broken via a poisoned config cache, not the public repo). Run completed
+      without crashing, 18 `runs` rows written, zero-alarm correctly threw at streak≥2. Restored the real
+      config and re-ran: the genuine board recovered cleanly, zero manual cleanup beyond fixing the
+      underlying problem. See `DECISIONS.md` 2026-08-20 for full detail, including an incidental,
+      unrelated Ashby-provider network blip that doubled as a second real resilience demonstration.
 
 ### Phase 4 — Ingestion breadth
 - [x] WF-1d discover — accelerator portfolios → career-page link extraction → confirmed via real ATS

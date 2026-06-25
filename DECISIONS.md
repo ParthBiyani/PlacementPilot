@@ -1397,3 +1397,50 @@ alone is not sufficient for these four files, even though it always was for work
 real trigger being intentionally left inactive (WF-1/WF-1b/WF-1c/WF-1d/WF-4). Verified end to end after
 both fixes: the retuned-criteria test above ran successfully afterward, with a real fallback-alarm-free
 success path once GitHub connectivity itself recovered.
+
+---
+
+## 2026-08-20 — Chaos test: dead token mid-run, real ATS traffic, verified graceful degradation and recovery
+
+**Context.** Phase 3's last leftover item: "dead token mid-run recovers unattended." Never actually run
+against real conditions before.
+
+**Method.** Rather than push a broken `sources.json` to the public repo, poisoned the local
+`config_cache` row for `sources.json` directly with one board's token deliberately corrupted
+(`greenhouse:groww` → `greenhouse:groww-DEFINITELY-BROKEN-CHAOS-TEST`) — WF-L0's conditional-request logic
+serves this from cache on a 304 regardless of what's actually on GitHub, so the real repo was never
+touched. Ran **WF-1 collect-ats** for real (manually, via the UI — it stays `active: false`) against all
+17 real boards, one of them deliberately broken.
+
+**Result.** The run completed end to end without crashing: 18 `runs` rows written (one per source, per
+Phase 3's guaranteed-row design), real data landed for every healthy Greenhouse board (Postman 111,
+Stripe 576, Databricks 805, etc.), and the broken token's fake source cleanly returned 0 with no crash —
+`Check Zero Alarm` correctly threw once its streak crossed 2 (visible as a "failed" node in the UI, which
+is the *intended* behavior, not a bug: the same throw-after-both-writes-commit pattern documented
+2026-08-14). Restored the cache to the real content and re-ran: the genuine `greenhouse:groww` board
+recovered cleanly on the very next run (5 real postings, `consecutive_zero` reset to 0) with **zero manual
+intervention beyond restoring the underlying config** — exactly the "recovers unattended" bar this test
+was meant to clear.
+
+**Incidental finding, not chased further.** The same test run also saw all 7 Ashby boards return 0 postings
+simultaneously — unrelated to the deliberately-broken Greenhouse token. Checked live: `api.ashbyhq.com` was
+confirmed healthy and returning real data moments later via a direct `wget` from inside the container, so
+this wasn't a structural bug — most likely the same window of general network flakiness already observed
+elsewhere this session (the GitHub connectivity issues WF-L0's fix above addresses). Worth noting only
+because it happened to double as a second, real demonstration of the same resilience property: `Fetch
+Ashby` already has `retryOnFail`/`continueOnFail` set (unlike WF-L0 before today's fix), and a genuine
+multi-source connection hiccup was absorbed cleanly without aborting the run.
+
+**One expected limitation, not a new gap.** No WF-5/Discord alarm arrived for the zero-streak throw during
+either manual run. This matches an already-documented n8n behavior from 2026-08-14 ("why a manual 'Execute
+workflow' button click never triggers WF-5: `dispatchesErrorWorkflow = !isManualMode &&
+!suppressErrorWorkflow` is unconditional in n8n itself") — every execution of WF-1 in this project's
+history has been manual (it has never been activated), so this specific alarm-dispatch path has only ever
+been exercisable via a genuine scheduled/webhook trigger, which stays gated on the owner's decision to
+activate WF-1.
+
+**Consequences.** All test artifacts deleted after verification: the fake `sources` row and its `runs`
+rows. The real behavior this test set out to prove — a dead token mid-run doesn't crash the workflow, gets
+correctly tracked and alarmed once its streak crosses threshold, and recovers cleanly with no manual
+cleanup once the underlying problem is fixed — is now genuinely verified, not assumed. **Phase 3 is fully
+complete.**
