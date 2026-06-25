@@ -78,7 +78,7 @@ Full detail in the approved plan; workflow-by-workflow execution order in [FLOW.
 
 ## Current state
 
-*Rewritten in place each session. Last updated: 2026-08-20.*
+*Rewritten in place each session. Last updated: 2026-08-20 (later same day).*
 
 **Phase 2, 3 (now fully complete, including both leftovers), 4, and 8 all complete. Phase 6 declined by
 the owner — not being built.** WF-1d, WF-1c,

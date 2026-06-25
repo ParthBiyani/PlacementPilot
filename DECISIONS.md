@@ -1444,3 +1444,59 @@ rows. The real behavior this test set out to prove — a dead token mid-run does
 correctly tracked and alarmed once its streak crosses threshold, and recovers cleanly with no manual
 cleanup once the underlying problem is fixed — is now genuinely verified, not assumed. **Phase 3 is fully
 complete.**
+
+---
+
+## 2026-08-20 — Owner supplied real example postings; found and fixed a genuine prompt-adherence gap
+
+**Context.** Owner pasted ~18 real job postings (a screenshot plus forwarded Discord-channel-style text)
+as examples of the *type* of company/role they want to see, explicitly instructing that the compensation
+floors from the same-day retune must NOT be relaxed by these examples — some of the examples (PlaySimple
+₹15 LPA + ₹30k/mo, Eli Lilly ₹16.6 LPA + ₹50k/mo, BlackRock ₹18.4 LPA + ₹50k/mo) sit below the stated
+floor and were included only to illustrate company/role type, not as compensation exceptions.
+
+**Source-coverage check.** Cross-referenced the named companies against `sources.json` and live ATS
+probes. One real, verified win: Paytm's Lever board (`lever:paytm`) confirmed live and added. Two
+near-misses caught before being added: Lever tokens `eternal` and `pocketfm` both return HTTP 200 with
+real data, but the actual postings are unrelated companies (a US "Open Interest" trading firm; a
+Netherlands-based, unrelated small employer) — a token collision, not the real Zomato/Eternal or Pocket FM
+boards. Not added. The remaining named companies (JUSPAY, CoinDCX, SLB, Amazon, Microsoft, Cisco,
+Honeywell, Salesforce, Wayfair, PlaySimple, Eli Lilly, BlackRock, Increff) run custom/enterprise ATS
+platforms (Workday, Oracle Cloud HCM, in-house portals) with no Greenhouse/Lever/Ashby equivalent —
+confirmed via their real given URLs, not assumed; none are addable without dedicated Tier D
+(career-page-scrape) engineering per company, which isn't a high-value use of effort for one company at a
+time.
+
+**Trial run, real bug found.** Fed 5 of the real postings (2 clearly above the floor, 2 clearly below, 1
+genuine edge case — a Sony Research India "Data Science Intern" with a ₹75k/month stipend meeting the
+floor but **no PPO/conversion-path mention anywhere in the text**) through the retuned WF-2. Compensation
+enforcement was flawless (the two below-floor postings correctly scored 25-28 and were rejected despite
+being "good example" companies, exactly matching the owner's instruction). But the employment-type rule
+failed on the edge case: Sony Research scored 78 and `should_apply=true`, and — tellingly — the model's own
+stated reasoning never mentioned the PPO requirement at all, indicating it simply didn't apply that
+specific rule for this item rather than deliberately overriding it.
+
+**Decision.** Strengthened `wf2_score.json`'s `Prefilter` node's prompt text for the employment-type rule:
+marked it "check this FIRST, before anything else," added an explicit instruction to search the posting
+text for specific phrases, explicitly stated that a prestigious company/research-lab name is *not* itself
+evidence of a conversion path, and added a concrete negative few-shot example matching the exact failure
+mode just observed (a stipend-qualifying, skills-matching internship with no stated PPO must still be
+rejected).
+
+**Why.** A single miss on a genuinely ambiguous-sounding case ("Data Science Intern" at a serious research
+lab, no explicit disqualifying language) is a plausible LLM failure mode — Haiku weighing a strong overall
+impression over a specific literal-text check. Since this is exactly the class of rule where the owner
+explicitly does not want ambiguity resolved in the LLM's favor (unlike the general "ambiguous → don't
+penalize" policy, which is *intentionally* generous elsewhere in the same prompt), it needed stronger,
+more explicit anchoring rather than being left to the model's judgment.
+
+**Consequences.** Re-tested the same 5 postings after the fix, verified live: Sony Research now correctly
+scores 72 and `should_apply=false`, with the reasoning explicitly citing "posting states internship with
+no explicit conversion path (PPO/full-time offer mentioned)." The two previously-correct high scorers
+(Wayfair, Eternal) remained correctly high (85/92 and 78/92 across the two prompt versions — both still
+comfortably above the notify threshold), and the two below-floor rejections were unaffected. The prompt
+edit auto-busted `prompt_version` as designed, so no manual cache invalidation was needed. This is
+**informal criteria refinement, not the formal Phase 7 evaluation** (no train/held-out split, no `WF-6`,
+no frozen baseline gate) — Phase 7 stays gated on the ~200-posting labeled set per the standing rule never
+to tune against a held-out split. All test postings/evaluations/notifications and the throwaway test
+workflow were deleted after verification.

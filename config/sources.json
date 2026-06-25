@@ -22,7 +22,8 @@
     { "provider": "ashby",      "token": "ramp",       "company": "Ramp" },
     { "provider": "ashby",      "token": "deel",       "company": "Deel" },
     { "provider": "ashby",      "token": "bolna",       "company": "Bolna AI" },
-    { "provider": "greenhouse", "token": "razorpaysoftwareprivatelimited", "company": "Razorpay" }
+    { "provider": "greenhouse", "token": "razorpaysoftwareprivatelimited", "company": "Razorpay" },
+    { "provider": "lever",      "token": "paytm",      "company": "Paytm" }
   ],
 
   "aggregators": [
