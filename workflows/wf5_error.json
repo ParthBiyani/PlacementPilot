@@ -115,6 +115,225 @@
       }
     },
     {
+      "id": "5e11a1a2-0001-4000-8000-000000000008",
+      "name": "Spend Check Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        700
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000009",
+      "name": "Get Spend And WF-1 State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        420,
+        700
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT (SELECT COALESCE(SUM(cost_usd),0) FROM runs WHERE started_at::date = CURRENT_DATE) AS spend_today, (SELECT active FROM n8n.workflow_entity WHERE id = '75a4a1a8497c48f0') AS wf1_active"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "pp-local-postgres",
+          "name": "Local Postgres"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-00000000000a",
+      "name": "Is Cap Tripped?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const j = $input.first().json;\n// Daily Anthropic spend cap in USD -- adjust here if the estimated steady-state\n// volume (see DECISIONS.md) changes materially. Checked hourly, so this is a\n// backstop against a runaway bug, not a hard real-time limiter.\nconst CAP_USD = 5.0;\nconst spend = parseFloat(j.spend_today || 0);\nconst wf1Active = j.wf1_active === true || j.wf1_active === 't';\nreturn [{ json: { spend_today: spend, cap: CAP_USD, should_trip: spend > CAP_USD && wf1Active } }];"
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-00000000000b",
+      "name": "Cap Tripped?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        860,
+        700
+      ],
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.should_trip }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-00000000000c",
+      "name": "Deactivate WF-1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        560
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/75a4a1a8497c48f0/deactivate",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_API_KEY_PLACEHOLDER",
+          "name": "n8n API Key"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-00000000000d",
+      "name": "Deactivate WF-1b",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        640
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/b1b5e0f3a2b4d6789/deactivate",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_API_KEY_PLACEHOLDER",
+          "name": "n8n API Key"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-00000000000e",
+      "name": "Deactivate WF-1c",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        720
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/c1c5e0f3a2b4d6789/deactivate",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_API_KEY_PLACEHOLDER",
+          "name": "n8n API Key"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-00000000000f",
+      "name": "Deactivate WF-1d",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        800
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/d15c0f3a2b4e6789/deactivate",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_API_KEY_PLACEHOLDER",
+          "name": "n8n API Key"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000010",
+      "name": "Deactivate WF-4",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        880
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/f4a1b2c3d4e5f678/deactivate",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "N8N_API_KEY_PLACEHOLDER",
+          "name": "n8n API Key"
+        }
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000011",
+      "name": "Merge Deactivate Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1300,
+        700
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 5
+      }
+    },
+    {
+      "id": "5e11a1a2-0001-4000-8000-000000000012",
+      "name": "Build Spend Cap Alarm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cap = $('Is Cap Tripped?').first().json;\nconst text = `Today's Anthropic spend ($${cap.spend_today.toFixed(2)}) crossed the $${cap.cap.toFixed(2)}/day cap. WF-1, WF-1b, WF-1c, WF-1d and WF-4 have all been automatically deactivated -- no further external polling or LLM spend will occur. Review runs.cost_usd for today, then manually reactivate once you're satisfied it's safe.`;\nreturn [{\n  json: {\n    workflow_name: 'WF-5 spend cap',\n    title: '\\u{1F6D1} Daily spend cap tripped -- collectors auto-deactivated',\n    description: text,\n    db_error_text: text\n  }\n}];"
+      }
+    },
+    {
       "id": "5e11a1a2-0001-4000-8000-000000000007",
       "name": "Write Error Run",
       "type": "n8n-nodes-base.postgres",
@@ -198,9 +417,156 @@
           }
         ]
       ]
+    },
+    "Spend Check Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get Spend And WF-1 State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Spend And WF-1 State": {
+      "main": [
+        [
+          {
+            "node": "Is Cap Tripped?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Cap Tripped?": {
+      "main": [
+        [
+          {
+            "node": "Cap Tripped?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cap Tripped?": {
+      "main": [
+        [
+          {
+            "node": "Deactivate WF-1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Deactivate WF-1b",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Deactivate WF-1c",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Deactivate WF-1d",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Deactivate WF-4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Deactivate WF-1": {
+      "main": [
+        [
+          {
+            "node": "Merge Deactivate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deactivate WF-1b": {
+      "main": [
+        [
+          {
+            "node": "Merge Deactivate Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Deactivate WF-1c": {
+      "main": [
+        [
+          {
+            "node": "Merge Deactivate Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Deactivate WF-1d": {
+      "main": [
+        [
+          {
+            "node": "Merge Deactivate Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Deactivate WF-4": {
+      "main": [
+        [
+          {
+            "node": "Merge Deactivate Results",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge Deactivate Results": {
+      "main": [
+        [
+          {
+            "node": "Build Spend Cap Alarm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Spend Cap Alarm": {
+      "main": [
+        [
+          {
+            "node": "Send Alarm",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Write Error Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   },
