@@ -1500,3 +1500,37 @@ edit auto-busted `prompt_version` as designed, so no manual cache invalidation w
 no frozen baseline gate) — Phase 7 stays gated on the ~200-posting labeled set per the standing rule never
 to tune against a held-out split. All test postings/evaluations/notifications and the throwaway test
 workflow were deleted after verification.
+
+---
+
+## 2026-08-21 — `SETUP.md` was stale and actively wrong; rewritten against what actually happened
+
+**Context.** Owner asked directly whether the project was genuinely finished, clean, and "properly pushed
+to GitHub... with all details and steps required to set the project up." Checked rather than assumed:
+`git status` was clean and fully synced, the stack was running and all 11 real workflows were confirmed
+active (WF-4's 1-minute poll had already fired for real, proving the scheduler genuinely works, not just
+"configured"). But `SETUP.md` itself — last substantively written back in Phase 0 — had not been updated
+to match anything learned since.
+
+**What was actually wrong, not just incomplete:** §3 told a new reader to set `PP_CONFIG_BASE_URL` via
+n8n **Variables** — the exact mechanism found broken and reverted on 2026-08-14 ("Correction: n8n
+Variables are license-gated on this instance"). Following the existing `SETUP.md` from scratch would have
+silently reproduced that bug. Also missing entirely: the `import:workflow` + `publish:workflow` + restart
+requirement for `Execute Workflow` resolution (the single most consequential bug found this whole build);
+JSearch's second required header; Careerjet's four-layer auth; the V1 HTTP node's lack of Custom Auth
+support; and anything about the new spend-cap kill switch or its API key credential.
+
+**Decision.** Rewrote `SETUP.md` end to end against the real, lived history in this file rather than the
+original plan — added §7 ("Importing workflows and getting them to actually resolve each other") and §8
+("Going live") as new sections that didn't exist before, corrected §3 and §5 with the real gotchas, and
+added a pointer to a new `docs/raspberry-pi.md` (the Pi 3B+ deployment guide, previously only published as
+a private Claude artifact — moved into the repo itself so it's actually "in GitHub" rather than a link
+that could go stale or be inaccessible to a future collaborator).
+
+**Why.** A setup guide that was accurate for Phase 0 and silently wrong for everything learned after it is
+worse than no guide — it actively wastes a new reader's time reproducing bugs that are already solved.
+This is the same "verify, don't assume" discipline this file has held to about the workflows themselves,
+just never previously applied to the documentation meant to onboard someone else.
+
+**Consequences.** No code changes — this is a documentation-only correction. Every gotcha now recorded in
+`SETUP.md` is drawn directly from a real entry already in this file; nothing was invented for the rewrite.
