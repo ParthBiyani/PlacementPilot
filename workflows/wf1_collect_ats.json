@@ -308,6 +308,20 @@
       ]
     },
     {
+      "id": "5bb01493-09fe-411b-84eb-df173e445eab",
+      "name": "Merge Provider Postings",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2320,
+        512
+      ],
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3
+      }
+    },
+    {
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -589,7 +603,7 @@
       "main": [
         [
           {
-            "node": "Call WF-L1",
+            "node": "Merge Provider Postings",
             "type": "main",
             "index": 0
           }
@@ -622,9 +636,9 @@
       "main": [
         [
           {
-            "node": "Call WF-L1",
+            "node": "Merge Provider Postings",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -655,9 +669,9 @@
       "main": [
         [
           {
-            "node": "Call WF-L1",
+            "node": "Merge Provider Postings",
             "type": "main",
-            "index": 0
+            "index": 2
           }
         ]
       ]
@@ -721,6 +735,17 @@
         [
           {
             "node": "Check Zero Alarm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Provider Postings": {
+      "main": [
+        [
+          {
+            "node": "Call WF-L1",
             "type": "main",
             "index": 0
           }

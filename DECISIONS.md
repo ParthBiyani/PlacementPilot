@@ -1571,3 +1571,64 @@ for the owner (`Settings → Credentials → New → Gmail OAuth2`, then re-link
 ID that can't resolve on its own). Not yet tested live against a real second inbox — the pipeline logic
 was verified by static inspection (every connection resolves, every node threads `account` correctly) but
 not against a real message from the student account yet.
+
+---
+
+## 2026-08-21 — Real, previously-undiscovered WF-1 bug: missing Merge node let the zero-alarm silently kill Lever/Ashby collection every run
+
+**Context.** With WF-1 now genuinely activated and running its real hourly schedule for the first time all
+project, real Discord alarms started arriving: "N consecutive zero-result runs," N climbing every hour
+(6, then 9, then 10). Direct `wget` checks against Ashby's and Lever's real APIs from inside the container
+confirmed real, non-empty data existed the whole time (`linear` and `paytm` both returned genuine
+postings) — ruling out a real outage and pointing at something in WF-1 itself.
+
+**The bug.** `By Provider` (a `Switch` node) routes each source into one of three branches — Greenhouse,
+Lever, Ashby — each with its own `Fetch → Parse → Split Postings` chain. All three `Split X Postings`
+nodes connected **directly** to the same `Call WF-L1` node, with no `Merge` node between them. Pulled raw
+execution data straight from `n8n.execution_data` (a compact, array-indexed serialization — wrote a small
+Python resolver to decode it rather than guess from the UI) and confirmed directly: `Call WF-L1` fired
+**exactly once** per execution, and `Fetch Lever`/`Fetch Ashby` were **completely absent** from `runData`
+— they never even started. Only Greenhouse's branch (the first-listed Switch output) ever ran to
+completion.
+
+**Why.** A node with multiple independent incoming connections to the same input index fires once per
+branch as data arrives — it does not wait for sibling branches, unlike a dedicated `Merge` node. Greenhouse's
+branch reached the shared tail (`Dedup Upsert → Aggregate Per Source → Write Run → Update Source
+Zero-Streak → Check Zero Alarm`) first, and `Check Zero Alarm`'s deliberate `throw` (the same
+already-working alarm mechanism from Phase 3) aborts the **entire workflow execution** — not just that one
+branch — before Lever's and Ashby's `Fetch` nodes were ever scheduled to run. This bug has structurally
+existed since WF-1 was first built, but stayed silent through every earlier test session: it only
+manifests once some source's zero-streak crosses the alarm threshold, which never happened during short,
+isolated manual tests — only after real, continuous hourly polling ran long enough to build one up. Once
+triggered, it became **self-reinforcing**: Lever/Ashby never running kept their sources at the seeded
+zero, which kept extending the streak, which kept re-triggering the same abort, every single hour.
+
+**Decision.** Inserted a `Merge` node (`Merge Provider Postings`, `mode: append`, `numberInputs: 3`)
+between the three `Split X Postings` nodes and `Call WF-L1` — the same pattern already proven correct
+elsewhere in this project (WF-2's cache-hit/cache-miss merge, WF-4's classification-attempt merge). This
+makes the shared tail wait for all three provider branches to genuinely finish before running once, so an
+alarm thrown while processing one provider's results can no longer prevent the other two from ever being
+attempted.
+
+**A red herring along the way, corrected before it did damage.** While investigating, a first hypothesis
+(pairedItem/`$itemIndex` misalignment in `Parse Ashby`/`Parse Lever`/`Parse Greenhouse`'s
+`$('Get Active ATS Sources')` lookback) looked plausible and was tried — replacing `.item.json` with
+`.all()[$itemIndex].json`. Live-tested and found to make things *worse*, not better: real Greenhouse
+postings started landing under **wrong, shifted source IDs** (Databricks' real count appearing under
+`ashby:bolna`, etc.) — because `$itemIndex` resets to 0 within each Switch branch, no longer matching the
+original combined array position. Reverted immediately rather than leaving a partially-broken fix in
+place; the original `.item.json` reference turned out to be correct all along for this specific chain
+(Switch → single HTTP node, no fan-in) — the actual bug was the missing Merge node further downstream, not
+this lookback at all.
+
+**Consequences.** Verified live, end to end, immediately after the fix: `Fetch Lever` (3 items) and
+`Fetch Ashby` (7 items) both executed for the first time in hours, `Merge Provider Postings` correctly
+combined 3,039 total items from all three providers, and every source in `runs` showed its own real,
+correctly-attributed count — including a genuine first successful batch for the newly-added Paytm source
+(227 fetched, 224 new). `ashby:deel`/`lever:mistral`/`lever:plaid` still show 0, but confirmed via direct
+API checks to be real zeros (matching their establishment as genuinely low/no-volume boards back in
+2026-08-14), not bug artifacts. **Standing rule for any future workflow with parallel branches sharing a
+downstream node: if that shared node can trigger something that throws (an alarm, a hard validation), it
+needs an explicit `Merge` node upstream of it, not a bare multi-connection fan-in** — this pattern was
+already used correctly in WF-2 and WF-4 by convention, but WF-1 predates that convention being made
+explicit and was never audited against it until a real production alarm surfaced the gap.
