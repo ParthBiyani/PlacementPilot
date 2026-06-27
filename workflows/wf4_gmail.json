@@ -4,7 +4,7 @@
   "nodes": [
     {
       "id": "g1a1b1c1-0001-4000-8000-000000000001",
-      "name": "Gmail Trigger",
+      "name": "Gmail Trigger (Primary)",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -34,7 +34,7 @@
     },
     {
       "id": "g1a1b1c1-0001-4000-8000-00000000001a",
-      "name": "Map Gmail Fields",
+      "name": "Map Gmail Fields (Primary)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -44,7 +44,52 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const j = $json;\nreturn {\n  json: {\n    message_id: j.id,\n    subject: j.subject || '',\n    from_text: (j.from && j.from.text) || '',\n    body_text: j.text || j.html || ''\n  }\n};"
+        "jsCode": "const j = $json;\nreturn {\n  json: {\n    account: 'primary',\n    message_id: j.id,\n    subject: j.subject || '',\n    from_text: (j.from && j.from.text) || '',\n    body_text: j.text || j.html || ''\n  }\n};"
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000018",
+      "name": "Gmail Trigger (Student)",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        200
+      ],
+      "parameters": {
+        "event": "messageReceived",
+        "simple": false,
+        "filters": {
+          "q": "-category:promotions -category:social -category:forums"
+        },
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "STUDENT_GMAIL_CREDENTIAL_PLACEHOLDER",
+          "name": "Gmail account (Student)"
+        }
+      }
+    },
+    {
+      "id": "g1a1b1c1-0001-4000-8000-000000000019",
+      "name": "Map Gmail Fields (Student)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        310,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const j = $json;\nreturn {\n  json: {\n    account: 'student',\n    message_id: j.id,\n    subject: j.subject || '',\n    from_text: (j.from && j.from.text) || '',\n    body_text: j.text || j.html || ''\n  }\n};"
       }
     },
     {
@@ -58,9 +103,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT $1::text AS message_id, $2::text AS subject, $3::text AS from_text, $4::text AS body_text, (m.message_id IS NOT NULL) AS already_processed FROM (SELECT 1) d LEFT JOIN gmail_messages m ON m.message_id = $1",
+        "query": "SELECT $1::text AS account, $2::text AS message_id, $3::text AS subject, $4::text AS from_text, $5::text AS body_text, (m.message_id IS NOT NULL) AS already_processed FROM (SELECT 1) d LEFT JOIN gmail_messages m ON m.account = $1 AND m.message_id = $2",
         "additionalFields": {
-          "queryParams": "message_id,subject,from_text,body_text"
+          "queryParams": "account,message_id,subject,from_text,body_text"
         }
       },
       "credentials": {
@@ -156,7 +201,7 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const VALID = ['oa', 'interview', 'rejection', 'offer', 'referral', 'other'];\n\nfunction tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!VALID.includes(parsed.classification)) errors.push('classification must be one of ' + VALID.join('/'));\n  if (parsed.company !== null && parsed.company !== undefined && typeof parsed.company !== 'string') errors.push('company must be a string or null');\n  if (parsed.role !== null && parsed.role !== undefined && typeof parsed.role !== 'string') errors.push('role must be a string or null');\n  if (parsed.deadline !== null && parsed.deadline !== undefined && typeof parsed.deadline !== 'string') errors.push('deadline must be a string or null');\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Check Already Processed').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    valid: result.ok,\n    classification: result.ok ? result.parsed.classification : null,\n    company: result.ok ? (result.parsed.company || null) : null,\n    role: result.ok ? (result.parsed.role || null) : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    retry_user_message: result.ok ? null : ($('Build Classify Prompt').all()[$itemIndex].json.user_message + '\\n\\nYour previous response was invalid and could not be used: ' + result.error + '\\nRespond again with STRICT JSON ONLY, matching exactly the required shape, no other text, no markdown fences.'),\n    system_message: $('Build Classify Prompt').all()[$itemIndex].json.system_message\n  }\n};"
+        "jsCode": "const VALID = ['oa', 'interview', 'rejection', 'offer', 'referral', 'other'];\n\nfunction tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!VALID.includes(parsed.classification)) errors.push('classification must be one of ' + VALID.join('/'));\n  if (parsed.company !== null && parsed.company !== undefined && typeof parsed.company !== 'string') errors.push('company must be a string or null');\n  if (parsed.role !== null && parsed.role !== undefined && typeof parsed.role !== 'string') errors.push('role must be a string or null');\n  if (parsed.deadline !== null && parsed.deadline !== undefined && typeof parsed.deadline !== 'string') errors.push('deadline must be a string or null');\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Check Already Processed').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    account: ctx.account,\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    valid: result.ok,\n    classification: result.ok ? result.parsed.classification : null,\n    company: result.ok ? (result.parsed.company || null) : null,\n    role: result.ok ? (result.parsed.role || null) : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    retry_user_message: result.ok ? null : ($('Build Classify Prompt').all()[$itemIndex].json.user_message + '\\n\\nYour previous response was invalid and could not be used: ' + result.error + '\\nRespond again with STRICT JSON ONLY, matching exactly the required shape, no other text, no markdown fences.'),\n    system_message: $('Build Classify Prompt').all()[$itemIndex].json.system_message\n  }\n};"
       }
     },
     {
@@ -230,7 +275,7 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const VALID = ['oa', 'interview', 'rejection', 'offer', 'referral', 'other'];\n\nfunction tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!VALID.includes(parsed.classification)) errors.push('classification must be one of ' + VALID.join('/'));\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Validate Attempt 1').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    classification: result.ok ? result.parsed.classification : 'other',\n    company: result.ok ? (result.parsed.company || null) : null,\n    role: result.ok ? (result.parsed.role || null) : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    invalid: !result.ok\n  }\n};"
+        "jsCode": "const VALID = ['oa', 'interview', 'rejection', 'offer', 'referral', 'other'];\n\nfunction tryValidate(rawText) {\n  let parsed;\n  try {\n    const cleaned = (rawText || '').trim().replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n    parsed = JSON.parse(cleaned);\n  } catch (e) {\n    return { ok: false, error: 'JSON parse error: ' + e.message };\n  }\n  const errors = [];\n  if (!VALID.includes(parsed.classification)) errors.push('classification must be one of ' + VALID.join('/'));\n  if (errors.length) return { ok: false, error: errors.join('; ') };\n  return { ok: true, parsed };\n}\n\nconst resp = $json;\nconst ctx = $('Validate Attempt 1').all()[$itemIndex].json;\nconst content = resp.content || [];\nconst textBlock = content.find(b => b.type === 'text');\nconst rawText = textBlock ? textBlock.text : '';\nconst result = tryValidate(rawText);\n\nreturn {\n  json: {\n    account: ctx.account,\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    classification: result.ok ? result.parsed.classification : 'other',\n    company: result.ok ? (result.parsed.company || null) : null,\n    role: result.ok ? (result.parsed.role || null) : null,\n    deadline: result.ok ? (result.parsed.deadline || null) : null,\n    invalid: !result.ok\n  }\n};"
       }
     },
     {
@@ -245,7 +290,7 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const j = $json;\nreturn { json: { message_id: j.message_id, subject: j.subject, from_text: j.from_text, classification: j.classification, company: j.company, role: j.role, deadline: j.deadline, invalid: false } };"
+        "jsCode": "const j = $json;\nreturn { json: { account: j.account, message_id: j.message_id, subject: j.subject, from_text: j.from_text, classification: j.classification, company: j.company, role: j.role, deadline: j.deadline, invalid: false } };"
       }
     },
     {
@@ -333,7 +378,7 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const ctx = $('Normalize Company For Match').all()[$itemIndex].json;\nconst match = $json;\nreturn {\n  json: {\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    classification: ctx.classification,\n    company: ctx.company,\n    role: ctx.role,\n    deadline: ctx.deadline,\n    invalid: ctx.invalid || false,\n    matched_posting_id: match.matched_posting_id || null,\n    matched_company: match.matched_company || null,\n    match_similarity: match.match_similarity || null\n  }\n};"
+        "jsCode": "const ctx = $('Normalize Company For Match').all()[$itemIndex].json;\nconst match = $json;\nreturn {\n  json: {\n    account: ctx.account,\n    message_id: ctx.message_id,\n    subject: ctx.subject,\n    from_text: ctx.from_text,\n    classification: ctx.classification,\n    company: ctx.company,\n    role: ctx.role,\n    deadline: ctx.deadline,\n    invalid: ctx.invalid || false,\n    matched_posting_id: match.matched_posting_id || null,\n    matched_company: match.matched_company || null,\n    match_similarity: match.match_similarity || null\n  }\n};"
       }
     },
     {
@@ -348,7 +393,7 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const j = $json;\nconst LABELS = { oa: '\\uD83D\\uDCDD Online Assessment', interview: '\\uD83C\\uDFA4 Interview', rejection: '\\u274C Rejection', offer: '\\uD83C\\uDF89 Offer', referral: '\\uD83E\\uDD1D Referral' };\nconst title = `${LABELS[j.classification] || j.classification} \\u2014 ${j.company || 'Unknown company'}`;\n\nconst lines = [\n  j.role ? `**Role:** ${j.role}` : null,\n  j.deadline ? `**Date/Deadline:** ${j.deadline}` : null,\n  j.matched_posting_id\n    ? `**Matched posting:** ${j.matched_company} (similarity ${Math.round((j.match_similarity || 0) * 100)}%)`\n    : '**No matching tracked posting found** \\u2014 update manually if this is relevant.',\n  `**Subject:** ${j.subject}`,\n  `**From:** ${j.from_text}`\n].filter(Boolean);\n\nconst color = { oa: 15105570, interview: 3066993, rejection: 15548997, offer: 3066993, referral: 3447003 }[j.classification] || 9807270;\n\nreturn { json: { ...j, embed_title: title, embed_description: lines.join('\\n'), embed_color: color } };"
+        "jsCode": "const j = $json;\nconst LABELS = { oa: '\\uD83D\\uDCDD Online Assessment', interview: '\\uD83C\\uDFA4 Interview', rejection: '\\u274C Rejection', offer: '\\uD83C\\uDF89 Offer', referral: '\\uD83E\\uDD1D Referral' };\nconst title = `${LABELS[j.classification] || j.classification} \\u2014 ${j.company || 'Unknown company'}${j.account === 'student' ? ' (student inbox)' : ''}`;\n\nconst lines = [\n  j.role ? `**Role:** ${j.role}` : null,\n  j.deadline ? `**Date/Deadline:** ${j.deadline}` : null,\n  j.matched_posting_id\n    ? `**Matched posting:** ${j.matched_company} (similarity ${Math.round((j.match_similarity || 0) * 100)}%)`\n    : '**No matching tracked posting found** \\u2014 update manually if this is relevant.',\n  `**Subject:** ${j.subject}`,\n  `**From:** ${j.from_text}`\n].filter(Boolean);\n\nconst color = { oa: 15105570, interview: 3066993, rejection: 15548997, offer: 3066993, referral: 3447003 }[j.classification] || 9807270;\n\nreturn { json: { ...j, embed_title: title, embed_description: lines.join('\\n'), embed_color: color } };"
       }
     },
     {
@@ -429,7 +474,7 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "language": "javaScript",
-        "jsCode": "const j = $json;\nreturn { json: { message_id: j.message_id, classification: j.classification, company: j.company, role: j.role, deadline: j.deadline, invalid: j.invalid || false, matched_posting_id: null, match_similarity: null } };"
+        "jsCode": "const j = $json;\nreturn { json: { account: j.account, message_id: j.message_id, classification: j.classification, company: j.company, role: j.role, deadline: j.deadline, invalid: j.invalid || false, matched_posting_id: null, match_similarity: null } };"
       }
     },
     {
@@ -457,9 +502,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO gmail_messages (message_id, classification, company, role, deadline, matched_posting_id, match_similarity, invalid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (message_id) DO NOTHING RETURNING message_id",
+        "query": "INSERT INTO gmail_messages (account, message_id, classification, company, role, deadline, matched_posting_id, match_similarity, invalid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (account, message_id) DO NOTHING RETURNING message_id",
         "additionalFields": {
-          "queryParams": "message_id,classification,company,role,deadline,matched_posting_id,match_similarity,invalid"
+          "queryParams": "account,message_id,classification,company,role,deadline,matched_posting_id,match_similarity,invalid"
         }
       },
       "credentials": {
@@ -509,18 +554,40 @@
     }
   ],
   "connections": {
-    "Gmail Trigger": {
+    "Gmail Trigger (Primary)": {
       "main": [
         [
           {
-            "node": "Map Gmail Fields",
+            "node": "Map Gmail Fields (Primary)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Map Gmail Fields": {
+    "Map Gmail Fields (Primary)": {
+      "main": [
+        [
+          {
+            "node": "Check Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger (Student)": {
+      "main": [
+        [
+          {
+            "node": "Map Gmail Fields (Student)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Gmail Fields (Student)": {
       "main": [
         [
           {

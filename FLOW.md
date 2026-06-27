@@ -210,24 +210,33 @@ Schedule (daily)
 by hand before building, not re-verified live per run, and there's no ETag/conditional-request layer on
 the sitemap fetches yet. Worth adding if a third Tier D source needs the same treatment.
 
-### Gmail — `WF-4` (built and verified live)
+### Gmail — `WF-4` (built and verified live, now polling two inboxes)
 ```
-Gmail Trigger (1m poll, read-only, simple:false for full body)
-  └─► Map Gmail Fields (flattens id/subject/from.text/text → message_id/subject/from_text/body_text —
-      Gmail Trigger's real field names don't match what the rest of the workflow expects; see DECISIONS.md)
-      └─► cache check on gmail_messages(message_id), guaranteed-row LEFT JOIN
-          └─► Anthropic classify {oa|interview|rejection|offer|referral|other} + company/role/deadline,
-              verbatim-only, one retry on invalid JSON (same pattern as WF-2)
-              └─► IF classification ≠ other:
-                    fuzzy-match company (pg_trgm) → Build Alert → fans out in parallel to:
-                      Send Discord Alert, Update Application (applications upsert), Merge Before Record
-                  ELSE: Shape Skipped (Other) → Merge Before Record
-              └─► Record Gmail Message (gmail_messages insert) → Tally → Write Run
+Gmail Trigger (Primary) ──┐  (1m poll each, read-only, simple:false for full body)
+Gmail Trigger (Student) ──┤
+  Map Gmail Fields (Primary) ─┐  (flattens id/subject/from.text/text → message_id/subject/from_text/
+  Map Gmail Fields (Student) ─┤   body_text; each hardcodes its own account: 'primary'/'student' label —
+                              │   that's the only place the source inbox is knowable, not in Gmail's own
+                              │   API response)
+                              └─► cache check on gmail_messages(account, message_id) — composite key,
+                                  since Gmail message IDs are unique only within one mailbox, not globally
+                                  └─► Anthropic classify {oa|interview|rejection|offer|referral|other} +
+                                      company/role/deadline, verbatim-only, one retry (same as WF-2)
+                                      └─► IF classification ≠ other:
+                                            fuzzy-match company (pg_trgm) → Build Alert (labels the
+                                            embed "(student inbox)" when relevant) → fans out in
+                                            parallel to: Send Discord Alert, Update Application
+                                            (applications upsert), Merge Before Record
+                                          ELSE: Shape Skipped (Other) → Merge Before Record
+                                      └─► Record Gmail Message (composite-key insert) → Tally → Write Run
 ```
-Notify is direct (not via WF-3) — WF-3's shape is posting/score-specific and `notifications`'s
-`UNIQUE(posting_id, channel)` doesn't fit a Gmail-classification event. `Build Alert`'s three parallel
-targets are deliberate: the Discord node overwrites `$json` with its own response, so anything needing the
-original fields (`Update Application`, `Merge Before Record`) must branch off *before* it, not after.
+`account` threads through every intermediate node between the trigger and the final insert
+(`Validate Attempt 1`/`2`, `Finalize From Attempt 1`, `Combine Match Result`, `Shape Skipped (Other)`) —
+same pattern already used for `message_id` itself. Notify is direct (not via WF-3) — WF-3's shape is
+posting/score-specific and `notifications`'s `UNIQUE(posting_id, channel)` doesn't fit a Gmail-
+classification event. `Build Alert`'s three parallel targets are deliberate: the Discord node overwrites
+`$json` with its own response, so anything needing the original fields (`Update Application`,
+`Merge Before Record`) must branch off *before* it, not after.
 
 ### Discovery — `WF-1d`
 ```

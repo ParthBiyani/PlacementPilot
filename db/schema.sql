@@ -147,7 +147,8 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- audit trail of every classification made, independent of whether it
 -- matched a tracked posting.
 CREATE TABLE IF NOT EXISTS gmail_messages (
-  message_id        TEXT PRIMARY KEY,
+  account            TEXT NOT NULL DEFAULT 'primary', -- which mailbox this came from (WF-4 polls >1)
+  message_id         TEXT NOT NULL,             -- unique per-account only, not globally -- see PK below
   classification     TEXT NOT NULL,             -- oa|interview|rejection|offer|referral|other
   company            TEXT,
   role               TEXT,
@@ -155,7 +156,8 @@ CREATE TABLE IF NOT EXISTS gmail_messages (
   matched_posting_id TEXT REFERENCES postings(id),
   match_similarity   NUMERIC(4,3),               -- pg_trgm score for the match, null if unmatched
   invalid            BOOLEAN NOT NULL DEFAULT false,
-  processed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  processed_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (account, message_id)              -- composite: Gmail message IDs aren't globally unique
 );
 
 -- ---------------------------------------------------------------------------

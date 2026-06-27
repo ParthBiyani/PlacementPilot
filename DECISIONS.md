@@ -1534,3 +1534,40 @@ just never previously applied to the documentation meant to onboard someone else
 
 **Consequences.** No code changes — this is a documentation-only correction. Every gotcha now recorded in
 `SETUP.md` is drawn directly from a real entry already in this file; nothing was invented for the rewrite.
+
+---
+
+## 2026-08-21 — WF-4 extended to poll a second Gmail inbox; composite key needed, not just a second trigger
+
+**Context.** Owner asked to add their college/student Gmail account as a second inbox for WF-4 to watch
+(placement-cell communication and recruiter mail arrive there too, separately from the primary account).
+
+**Decision.** Added a second `Gmail Trigger` + field-mapping pair (`Gmail Trigger (Student)` →
+`Map Gmail Fields (Student)`), both feeding the same shared downstream pipeline — dedup check, classify,
+match, alert, record — rather than duplicating any of that logic. Each mapper hardcodes its own `account`
+label (`'primary'` / `'student'`) into the item, since that information exists only in *which trigger
+node* produced the item, not in Gmail's own API response.
+
+**Why a schema change was also required.** Gmail's own message `id` is unique only *within* a single
+mailbox, not globally — two different Google accounts can in principle produce colliding IDs, and nothing
+guarantees they won't. `gmail_messages.message_id` was the sole primary key; leaving it that way with two
+inboxes feeding the same table would let one account's message get silently treated as "already
+processed" because of an unrelated collision with the other account's ID space. Added an `account` column
+and changed the primary key to the composite `(account, message_id)`, applied live via `ALTER TABLE`
+(add column, drop old PK, add new one) and mirrored into `db/schema.sql`. `Check Already Processed` and
+`Record Gmail Message` both now match/insert on the composite key; every intermediate node between them
+(`Validate Attempt 1`/`2`, `Finalize From Attempt 1`, `Combine Match Result`, `Shape Skipped (Other)`)
+threads `account` through alongside `message_id`, the same pattern already used for every other field in
+this pipeline. `Build Alert` labels which inbox a notification came from when it's the student account, so
+alerts stay distinguishable in Discord.
+
+**Consequences.** The student account needs its own real Google OAuth2 credential in n8n — a shared
+Anthropic-style API key doesn't apply here, each Gmail account needs its own authorized OAuth grant. If
+the student account is a college-managed Google Workspace domain (common), the college's own admin
+policies may restrict third-party OAuth app authorization independent of anything in this project — worth
+checking before assuming the credential setup will succeed on the first try. Left as a manual next step
+for the owner (`Settings → Credentials → New → Gmail OAuth2`, then re-link it on the
+`Gmail Trigger (Student)` node, since the committed JSON necessarily ships with a placeholder credential
+ID that can't resolve on its own). Not yet tested live against a real second inbox — the pipeline logic
+was verified by static inspection (every connection resolves, every node threads `account` correctly) but
+not against a real message from the student account yet.
